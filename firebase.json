@@ -12,5 +12,13 @@
       ],
       "predeploy": []
     }
-  ]
+  ],
+  "hosting": {
+    "public": "dist", // Adjust based on your build output directory
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
 }
