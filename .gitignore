@@ -70,3 +70,6 @@ node_modules/
 
 # Keys
 functions/serviceAccountKey.json
+
+#Ignore my-spa
+my-spa/
