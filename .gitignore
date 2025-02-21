@@ -68,8 +68,7 @@ node_modules/
 # dataconnect generated files
 .dataconnect
 
-# Keys
-functions/serviceAccountKey.json
+# Keys // functions/serviceAccountKey.json
 
 #Ignore my-spa
 my-spa/
