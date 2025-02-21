@@ -11,6 +11,7 @@ const functions = require('firebase-functions');
 const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+const cors = require('cors')({ origin: true }); // Enable CORS for all origins
 
 /*
 exports.helloWorld = functions.https.onRequest((req, res) => {
@@ -79,7 +80,77 @@ exports.loadDataFromSheet = functions.https.onRequest(async (req, res) => {
     console.error('Error loading data:', error);
     res.status(500).send('Internal Server Error');
   }
+
+  // Function 
+
 });
+
+
+
+exports.getDataById = functions.https.onRequest((req, res) => {
+  cors(req, res, async () => { // Wrap the handler with cors
+    if (req.method !== 'GET') {
+      return res.status(405).send('Method Not Allowed. Use GET.');
+    }
+
+    const id = req.query.id;
+    if (!id) {
+      return res.status(400).send('Missing "id" parameter in query.');
+    }
+
+    try {
+      const spreadsheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
+      const range = 'Sheet1!A1:E9';
+
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+      });
+
+      const rows = response.data.values;
+
+      if (!rows || rows.length === 0) {
+        console.log('No data found in spreadsheet.');
+        return res.status(404).send('No data found.');
+      }
+
+      const headers = rows[0];
+      const data = rows.slice(1);
+
+      const idColumnIndex = headers.findIndex(
+        (header) => header.toLowerCase() === 'id'
+      );
+      if (idColumnIndex === -1) {
+        return res.status(500).send('No "id" column found in spreadsheet headers.');
+      }
+
+      const filteredData = data
+        .filter((row) => row[idColumnIndex] && row[idColumnIndex].toString() === id.toString())
+        .map((row) => {
+          const rowData = {};
+          headers.forEach((header, index) => {
+            rowData[header] = row[index] || null;
+          });
+          return rowData;
+        });
+
+      if (filteredData.length === 0) {
+        return res.status(404).send(`No data found for id: ${id}`);
+      }
+
+      res.status(200).json({
+        success: true,
+        data: filteredData,
+      });
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      res.status(500).send('Internal Server Error');
+    }
+  });
+});
+
+
+
 
 // Create and deploy your first functions
 // https://firebase.google.com/docs/functions/get-started
