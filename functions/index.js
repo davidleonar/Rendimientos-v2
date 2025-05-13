@@ -12,21 +12,32 @@ const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const cors = require('cors')({ origin: true }); // Enable CORS for all origins
-
+//const twilio = require('twilio'); // Added for Twilio WhatsApp API
 
 // Initialize Firebase Admin SDK
 initializeApp({
   credential: applicationDefault(),
 });
 
-
 const db = getFirestore();
 
 // Google Sheets configuration
-const sheets = google.sheets({ version: 'v4', auth: new google.auth.GoogleAuth({
-  keyFile: './serviceAccountKey.json', // Update with the path to your service account file
-  scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-})});
+const sheets = google.sheets({
+  version: 'v4',
+  auth: new google.auth.GoogleAuth({
+    keyFile: './serviceAccountKey.json', // Update with the path to your service account file
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  }),
+});
+/*
+// Twilio configuration
+// Retrieve Twilio credentials from environment
+const accountSid = functions.config().twilio.sid;
+const authToken = functions.config().twilio.token;
+const twilioWhatsAppNumber = functions.config().twilio.whatsapp_number;
+*/
+
+
 
 // Helper function to fetch and filter spreadsheet data by ID
 async function fetchSpreadsheetDataById(spreadsheetId, range, id) {
@@ -70,10 +81,8 @@ async function fetchSpreadsheetDataById(spreadsheetId, range, id) {
   }
 }
 
-
-
 exports.getDataById = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => { // Wrap the handler with cors
+  cors(req, res, async () => {
     if (req.method !== 'GET') {
       return res.status(405).send('Method Not Allowed. Use GET.');
     }
@@ -85,7 +94,7 @@ exports.getDataById = functions.https.onRequest((req, res) => {
 
     try {
       const spreadsheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
-      const range = 'Sheet1!A1:F11';
+      const range = 'Sheet1!A1:F20';
 
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -134,7 +143,6 @@ exports.getDataById = functions.https.onRequest((req, res) => {
   });
 });
 
-
 // New function: getMovementsById
 exports.getMovementsById = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
@@ -170,9 +178,47 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 
 
 
+/*
+// New function: sendToSales (Twilio WhatsApp API)
+exports.sendToSales = functions.https.onRequest((req, res) => {
+  cors(req, res, async () => {
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed. Use POST.');
+    }
+
+    const { id, name, cantidad, numeroDeCuenta } = req.body;
+
+    // Validate required fields
+    if (!id || !name || !cantidad) {
+      return res.status(400).send('Missing required fields: id, name, cantidad');
+    }
+
+    // Construct message based on buy or sell
+    const message = numeroDeCuenta
+      ? `Venta:\nID: ${id}\nNombre: ${name}\nCantidad: ${cantidad}\nNúmero de Cuenta: ${numeroDeCuenta}`
+      : `Compra:\nID: ${id}\nNombre: ${name}\nCantidad: ${cantidad}`;
+
+      // Initialize Twilio client
+      const client = twilio(accountSid, authToken);
+
+    try {
+      // Send WhatsApp message
+      await client.messages.create({
+        body: message,
+        from: twilioWhatsAppNumber, // Twilio WhatsApp number
+        to: 'whatsapp:+573014375496', // Replace with your Sales team’s WhatsApp number
+      });
+      res.status(200).json({ success: true, message: 'Message sent to Sales' });
+    } catch (error) {
+      console.error('Error sending WhatsApp message:', error);
+      res.status(500).send('Failed to send message');
+    }
+  });
+});
+*/
+
 // Create and deploy your first functions
 // https://firebase.google.com/docs/functions/get-started
-
 // exports.helloWorld = onRequest((request, response) => {
 //   logger.info("Hello logs!", {structuredData: true});
 //   response.send("Hello from Firebase!");
