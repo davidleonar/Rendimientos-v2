@@ -157,7 +157,7 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 
     try {
       const spreadsheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-      const range = 'Sheet1!A1:G29'; // Adjust if movements are in a different sheet/range
+      const range = 'Sheet1!A1:G40'; // Adjust if movements are in a different sheet/range
 
       const filteredData = await fetchSpreadsheetDataById(spreadsheetId, range, id);
 
