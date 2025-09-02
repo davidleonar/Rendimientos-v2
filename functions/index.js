@@ -94,7 +94,7 @@ exports.getDataById = functions.https.onRequest((req, res) => {
 
     try {
       const spreadsheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
-      const range = 'Sheet1!A1:F50';
+      const range = 'Sheet1!A1:G50';
 
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
