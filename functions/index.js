@@ -13,6 +13,8 @@ const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const cors = require('cors')({ origin: true }); // Enable CORS for all origins
 const fetch = require('node-fetch');
+const {onRequest} = require("firebase-functions/v2/https"); //para tomar conf de firebase
+const {defineString} = require("firebase-functions/params"); //para tomar la conf de firebase
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -176,14 +178,17 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
   });
 });
 
+// Bypass SSL verification (for testing only)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 // LND proxy para conectar con el Nodo Umbrel
 exports.lndProxy = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
     const { path } = req.query; // e.g., ?path=/v1/balance/channels
     if (!path) return res.status(400).send('Missing "path" query param.');
 
-    const lndUrl = functions.config().lnd.url; // e.g., http://umbrel-ip:8080
-    const macaroon = functions.config().lnd.macaroon; // base64 macaroon
+    const lndUrl = 'https://192.168.1.14:8080'; // e.g., http://umbrel-ip:8080
+    const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
 
     try {
       const response = await fetch(`${lndUrl}${path}`, {
@@ -195,7 +200,11 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
         body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
       });
 
-      if (!response.ok) throw new Error(`LND error: ${response.statusText}`);
+      if (!response.ok) {
+        const errorBody = await response.text();  // Capture full LND error JSON
+        console.error(`LND Response: Status ${response.status}, Body: ${errorBody}`);
+        throw new Error(`LND error: ${response.status} - ${errorBody}`);
+    }
       const data = await response.json();
       res.json(data);
     } catch (err) {
