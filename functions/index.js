@@ -12,7 +12,7 @@ const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const cors = require('cors')({ origin: true }); // Enable CORS for all origins
-//const twilio = require('twilio'); // Added for Twilio WhatsApp API
+const fetch = require('node-fetch');
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -172,6 +172,35 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
     } catch (error) {
       console.error('Error in getMovementsById:', error);
       res.status(500).send('Internal Server Error');
+    }
+  });
+});
+
+// LND proxy para conectar con el Nodo Umbrel
+exports.lndProxy = functions.https.onRequest((req, res) => {
+  cors(req, res, async () => {
+    const { path } = req.query; // e.g., ?path=/v1/balance/channels
+    if (!path) return res.status(400).send('Missing "path" query param.');
+
+    const lndUrl = functions.config().lnd.url; // e.g., http://umbrel-ip:8080
+    const macaroon = functions.config().lnd.macaroon; // base64 macaroon
+
+    try {
+      const response = await fetch(`${lndUrl}${path}`, {
+        method: req.method,
+        headers: {
+          'Grpc-Metadata-macaroon': macaroon,
+          'Content-Type': 'application/json',
+        },
+        body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
+      });
+
+      if (!response.ok) throw new Error(`LND error: ${response.statusText}`);
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      console.error('Proxy error:', err);
+      res.status(500).json({ error: err.message });
     }
   });
 });
