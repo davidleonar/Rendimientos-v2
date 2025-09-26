@@ -201,10 +201,19 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
       });
 
       if (!response.ok) {
-        const errorBody = await response.text();  // Capture full LND error JSON
+        const errorBody = await response.text();
         console.error(`LND Response: Status ${response.status}, Body: ${errorBody}`);
-        throw new Error(`LND error: ${response.status} - ${errorBody}`);
-    }
+        try {
+          const errorJson = JSON.parse(errorBody);
+          if (errorJson.code === 12) {
+            return res.status(403).json({ error: 'Wallet locked', code: 12 });
+          }
+          throw new Error(`LND error: ${response.status} - ${errorBody}`);
+        } catch (parseErr) {
+          throw new Error(`LND error: ${response.status} - ${errorBody}`);
+        }
+      }
+
       const data = await response.json();
       res.json(data);
     } catch (err) {
