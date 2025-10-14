@@ -31,14 +31,6 @@ const sheets = google.sheets({
     scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
   }),
 });
-/*
-// Twilio configuration
-// Retrieve Twilio credentials from environment
-const accountSid = functions.config().twilio.sid;
-const authToken = functions.config().twilio.token;
-const twilioWhatsAppNumber = functions.config().twilio.whatsapp_number;
-*/
-
 
 
 // Helper function to fetch and filter spreadsheet data by ID
@@ -179,7 +171,7 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 });
 
 // Bypass SSL verification (for testing only)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+//process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 // LND proxy para conectar con el Nodo Umbrel
 exports.lndProxy = functions.https.onRequest((req, res) => {
@@ -187,7 +179,7 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
     const { path } = req.query; // e.g., ?path=/v1/balance/channels
     if (!path) return res.status(400).send('Missing "path" query param.');
 
-    const lndUrl = 'https://192.168.1.14:8080'; // e.g., http://umbrel-ip:8080
+    const lndUrl = 'http://35.208.122.165:3000'; // e.g., IP publica de la VM Proxy
     const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
 
     try {
@@ -224,45 +216,6 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
 });
 
 
-
-/*
-// New function: sendToSales (Twilio WhatsApp API)
-exports.sendToSales = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => {
-    if (req.method !== 'POST') {
-      return res.status(405).send('Method Not Allowed. Use POST.');
-    }
-
-    const { id, name, cantidad, numeroDeCuenta } = req.body;
-
-    // Validate required fields
-    if (!id || !name || !cantidad) {
-      return res.status(400).send('Missing required fields: id, name, cantidad');
-    }
-
-    // Construct message based on buy or sell
-    const message = numeroDeCuenta
-      ? `Venta:\nID: ${id}\nNombre: ${name}\nCantidad: ${cantidad}\nNúmero de Cuenta: ${numeroDeCuenta}`
-      : `Compra:\nID: ${id}\nNombre: ${name}\nCantidad: ${cantidad}`;
-
-      // Initialize Twilio client
-      const client = twilio(accountSid, authToken);
-
-    try {
-      // Send WhatsApp message
-      await client.messages.create({
-        body: message,
-        from: twilioWhatsAppNumber, // Twilio WhatsApp number
-        to: 'whatsapp:+573014375496', // Replace with your Sales team’s WhatsApp number
-      });
-      res.status(200).json({ success: true, message: 'Message sent to Sales' });
-    } catch (error) {
-      console.error('Error sending WhatsApp message:', error);
-      res.status(500).send('Failed to send message');
-    }
-  });
-});
-*/
 
 // Create and deploy your first functions
 // https://firebase.google.com/docs/functions/get-started
