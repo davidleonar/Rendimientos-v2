@@ -3,7 +3,7 @@ const https = require('https');
 const fs = require('fs');
 const url = require('url');
 
-const lndUrl = 'https://100.103.9.71:8080';  // e.g., https://100.103.9.71:8080
+const lndUrl = 'https://100.103.9.71:8080';  // e.g., la IP Tailscale del nodo btc
 const agent = new https.Agent({ ca: fs.readFileSync('./tls.cert') });
 
 const server = http.createServer((req, res) => {
