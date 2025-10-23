@@ -19,6 +19,9 @@ const url = require('url');
 const {onRequest} = require("firebase-functions/v2/https"); //para tomar conf de firebase
 const {defineString} = require("firebase-functions/params"); //para tomar la conf de firebase
 
+const lndUrl = 'http://35.208.122.165:3000'; // e.g., IP publica de la VM Proxy 35.208.122.165
+const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
+
 
 // Load LND TLS cert (must be in functions folder)
 const tlsCert = fs.readFileSync('./tls.cert'); // ← tls.cert in same dir
@@ -28,8 +31,6 @@ const agent = new https.Agent({
   ca: tlsCert,
   rejectUnauthorized: true, // Enforce cert
 });
-
-
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -191,51 +192,81 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 // LND proxy para conectar con el Nodo Umbrel
 exports.lndProxy = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
-    const { path } = req.query; // e.g., ?path=/v1/balance/channels
-    if (!path) return res.status(400).send('Missing "path" query param.');
-
-    const lndUrl = 'http://35.208.122.165:3000'; // e.g., IP publica de la VM Proxy 35.208.122.165
-    const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
-
     try {
-      const response = await fetch(`${lndUrl}${path}`, {
+      // 1. Validate path
+      const { path } = req.query;
+      if (!path || typeof path !== 'string') {
+        return res.status(400).json({
+          error: 'Missing or invalid "path" query parameter',
+          example: '?path=/v1/invoices',
+        });
+      }
+
+      // 2. Validate method
+      if (!['GET', 'POST'].includes(req.method)) {
+        return res.status(405).json({ error: 'Method not allowed. Use GET or POST.' });
+      }
+
+      // 3. Parse JSON body (only for POST)
+      let body = undefined;
+      if (req.method === 'POST') {
+        if (!req.is('json')) {
+          return res.status(400).json({ error: 'Content-Type must be application/json' });
+        }
+        body = req.body;
+        if (!body || typeof body !== 'object') {
+          return res.status(400).json({ error: 'Invalid JSON body' });
+        }
+      }
+
+      // 4. Forward to LND
+      const lndResponse = await fetch(`${lndUrl}${path}`, {
         method: req.method,
         headers: {
           'Grpc-Metadata-macaroon': macaroon,
           'Content-Type': 'application/json',
         },
-        body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
+        body: body ? JSON.stringify(body) : undefined,
         agent,
+        timeout: 10000, // 10s timeout
       });
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error(`LND Response: Status ${response.status}, Body: ${errorBody}`);
-        try {
-          const errorJson = JSON.parse(errorBody);
-          if (errorJson.code === 12) {
-            return res.status(403).json({ error: 'Wallet locked', code: 12 });
-          }
-          throw new Error(`LND error: ${response.status} - ${errorBody}`);
-        } catch (parseErr) {
-          throw new Error(`LND error: ${response.status} - ${errorBody}`);
-        }
+      // 5. Read response
+      let lndData;
+      const contentType = lndResponse.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        lndData = await lndResponse.json();
+      } else {
+        const text = await lndResponse.text();
+        console.error('LND non-JSON response:', text);
+        return res.status(502).json({
+          error: 'Invalid response from LND',
+          details: text.substring(0, 200),
+        });
       }
 
-      const data = await response.json();
-      res.json(data);
+      // 6. Forward success
+      res.status(lndResponse.status).json(lndData);
+
     } catch (err) {
-      console.error('Proxy error:', err);
-      res.status(500).json({ error: err.message });
+      console.error('lndProxy error:', err);
+
+      // === CLIENT-FRIENDLY ERROR HANDLING ===
+      if (err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT') {
+        return res.status(502).json({ error: 'LND TLS certificate error' });
+      }
+      if (err.code === 'ECONNREFUSED') {
+        return res.status(502).json({ error: 'Cannot connect to LND node' });
+      }
+      if (err.message.includes('timeout')) {
+        return res.status(504).json({ error: 'LND request timed out' });
+      }
+
+      // Generic fallback
+      res.status(500).json({
+        error: 'Internal proxy error',
+        details: err.message,
+      });
     }
   });
 });
-
-
-
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
