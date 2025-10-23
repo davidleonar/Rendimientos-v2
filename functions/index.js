@@ -12,9 +12,24 @@ const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const cors = require('cors')({ origin: true }); // Enable CORS for all origins
-const fetch = require('node-fetch');
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const url = require('url');
 const {onRequest} = require("firebase-functions/v2/https"); //para tomar conf de firebase
 const {defineString} = require("firebase-functions/params"); //para tomar la conf de firebase
+
+
+// Load LND TLS cert (must be in functions folder)
+const tlsCert = fs.readFileSync('./tls.cert'); // ← tls.cert in same dir
+
+// Create HTTPS agent that trusts your LND cert
+const agent = new https.Agent({
+  ca: tlsCert,
+  rejectUnauthorized: true, // Enforce cert
+});
+
+
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -190,6 +205,7 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
           'Content-Type': 'application/json',
         },
         body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
+        agent,
       });
 
       if (!response.ok) {

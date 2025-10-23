@@ -72,3 +72,10 @@ node_modules/
 
 #Ignore my-spa
 my-spa/
+
+#TLS.cert la certificacion TSL del nodo Lightning
+tls.cert
+
+# LND Macaroon
+admin.macaroon
+
