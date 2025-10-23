@@ -22,15 +22,16 @@ const {defineString} = require("firebase-functions/params"); //para tomar la con
 const lndUrl = 'http://35.208.122.165:3000'; // e.g., IP publica de la VM Proxy 35.208.122.165
 const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
 
-
+/*
 // Load LND TLS cert (must be in functions folder)
 const tlsCert = fs.readFileSync('./tls.cert'); // ← tls.cert in same dir
 
 // Create HTTPS agent that trusts your LND cert
 const agent = new https.Agent({
   ca: tlsCert,
-  rejectUnauthorized: true, // Enforce cert
+  rejectUnauthorized: false, // Enforce cert
 });
+*/
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -227,7 +228,7 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
           'Content-Type': 'application/json',
         },
         body: body ? JSON.stringify(body) : undefined,
-        agent,
+        //agent,
         timeout: 10000, // 10s timeout
       });
 
