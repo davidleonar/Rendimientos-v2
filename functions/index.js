@@ -18,6 +18,8 @@ const fs = require('fs');
 const url = require('url');
 const {onRequest} = require("firebase-functions/v2/https"); //para tomar conf de firebase
 const {defineString} = require("firebase-functions/params"); //para tomar la conf de firebase
+const next = require('next');
+const path = require('path');
 
 const lndUrl = 'http://35.208.122.165:3000'; // e.g., IP publica de la VM Proxy 35.208.122.165
 const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
@@ -271,3 +273,22 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
     }
   });
 });
+
+// funcion que maneja Next.js
+const app = next({
+  dev: false,
+  conf: { distDir: '.next' },
+});
+const handle = app.getRequestHandler();
+
+exports.nextServer = functions
+  .runWith({ memory: '2GB', timeoutSeconds: 120 })
+  .https.onRequest(async (req, res) => {
+    try {
+      await app.prepare();
+      handle(req, res);
+    } catch (error) {
+      console.error('Next.js server error:', error);
+      res.status(500).send('Server Error');
+    }
+  });
