@@ -212,7 +212,6 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
         const forwardedUrl = req.headers['x-forwarded-url'];
         if (forwardedUrl && typeof forwardedUrl === 'string') {
           const url = new URL(`http://dummy${forwardedUrl}`); // Parse as URL
-          path = url.pathname; // Extract /api/lndProxy/v1/invoices
           path = url.pathname.replace(/^\/api\/lndProxy/, ''); // Strip /api/lndProxy prefix
         }
         if (!path) {
@@ -249,7 +248,10 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
       }
 
       // 4. Forward to LND
-      await fetch(`${lndUrl}${path.startsWith('/') ? '' : '/'}${path}`, {
+
+      const lndUrlFinal = `${lndUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+      console.log('Fetching LND:', lndUrlFinal);
+      const lndResponse = await fetch(lndUrlFinal, {
         method: req.method,
         headers: {
           'Grpc-Metadata-macaroon': macaroon,
@@ -258,7 +260,10 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
         body: body ? JSON.stringify(body) : undefined,
         //agent,
         timeout: 10000, // 10s timeout
-      });
+      }).catch(err => {
+        console.error('Fetch error:', err);
+        throw err; // Re-throw to catch block
+      });;
 
       // 5. Read response
       let lndData;
