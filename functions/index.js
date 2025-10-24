@@ -213,6 +213,7 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
         if (forwardedUrl && typeof forwardedUrl === 'string') {
           const url = new URL(`http://dummy${forwardedUrl}`); // Parse as URL
           path = url.pathname; // Extract /api/lndProxy/v1/invoices
+          path = url.pathname.replace(/^\/api\/lndProxy/, ''); // Strip /api/lndProxy prefix
         }
         if (!path) {
           return res.status(400).json({
@@ -223,10 +224,10 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
       }
 
       // Reject GET on /v1/invoices
-      if (req.method === 'GET' && path === '/api/lndProxy/v1/invoices') {
+      if (req.method === 'GET' && path === '/v1/invoices') {
         return res.status(405).json({
           error: 'Method Not Allowed. Use POST to create an invoice.',
-          example: 'POST /api/lndProxy/v1/invoices',
+          example: 'POST /v1/invoices',
         });
       }
 
@@ -248,7 +249,7 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
       }
 
       // 4. Forward to LND
-      const lndResponse = await fetch(`${lndUrl}${path}`, {
+      await fetch(`${lndUrl}${path.startsWith('/') ? '' : '/'}${path}`, {
         method: req.method,
         headers: {
           'Grpc-Metadata-macaroon': macaroon,
