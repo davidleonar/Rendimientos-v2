@@ -1,8 +1,24 @@
 {
+  "hosting": {
+    "public": "my-spa/.next/server",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/lndProxy/**",
+        "function": "lndProxy"
+      },
+      {
+        "source": "**",
+        "function": "nextServer"
+      }
+    ],
+    "cleanUrls": true
+  },
   "functions": [
     {
       "source": "functions",
       "codebase": "default",
+      "runtime":"nodejs20",
       "ignore": [
         "node_modules",
         ".git",
