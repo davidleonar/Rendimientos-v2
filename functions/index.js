@@ -281,13 +281,12 @@ const app = next({
 });
 const handle = app.getRequestHandler();
 
-exports.nextServer = functions.runWith({ memory: '2GB', timeoutSeconds: 120 })
-  .https.onRequest(async (req, res) => {
-    try {
-      await app.prepare();
-      handle(req, res);
-    } catch (error) {
-      console.error('Next.js server error:', error);
-      res.status(500).send('Server Error');
-    }
-  });
+exports.nextServer = functions.https.onRequest(async (req, res) => {
+  try {
+    await app.prepare();
+    handle(req, res);
+  } catch (error) {
+    console.error('Next.js server error:', error);
+    res.status(500).send('Server Error');
+  }
+});
