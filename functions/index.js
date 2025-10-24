@@ -222,6 +222,14 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
         }
       }
 
+      // Reject GET on /v1/invoices
+      if (req.method === 'GET' && path === '/api/lndProxy/v1/invoices') {
+        return res.status(405).json({
+          error: 'Method Not Allowed. Use POST to create an invoice.',
+          example: 'POST /api/lndProxy/v1/invoices',
+        });
+      }
+
       // 2. Validate method
       if (!['GET', 'POST'].includes(req.method)) {
         return res.status(405).json({ error: 'Method not allowed. Use GET or POST.' });
