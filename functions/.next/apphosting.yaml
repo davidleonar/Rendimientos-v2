@@ -1,0 +1,45 @@
+# Settings for Backend (on Cloud Run).
+# See https://firebase.google.com/docs/app-hosting/configure#cloud-run
+runConfig:
+  minInstances: 2
+  maxInstances: 100
+  concurrency: 80
+  cpu: 2
+  memoryMiB: 1024
+
+# Environment variables and secrets.
+# env:
+  # Configure environment variables.
+  # See https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
+  # - variable: MESSAGE
+  #   value: Hello world!
+  #   availability:
+  #     - BUILD
+  #     - RUNTIME
+
+  env:
+  - variable: STORAGE_BUCKET
+    value: mybucket.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: API_KEY
+    secret: myApiKeySecret
+
+    # Same as API_KEY above but with a pinned version.
+  - variable: PINNED_API_KEY
+    secret: myApiKeySecret@5
+
+    # Same as API_KEY above but with the long form secret reference as defined by Cloud Secret Manager.
+  - variable: VERBOSE_API_KEY
+    secret: projects/test-project/secrets/secretID
+
+    # Same as API_KEY above but with the long form secret reference with pinned version.
+  - variable: PINNED_VERBOSE_API_KEY
+    secret: projects/test-project/secrets/secretID/versions/5
+
+  # Grant access to secrets in Cloud Secret Manager.
+  # See https://firebase.google.com/docs/app-hosting/configure#secret-parameters
+  # - variable: MY_SECRET
+  #   secret: mySecretRef

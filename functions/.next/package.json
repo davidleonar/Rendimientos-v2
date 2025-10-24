@@ -1,0 +1,39 @@
+{
+  "name": "my-spa",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build && rm -rf ../functions/.next && mkdir -p ../functions/.next && cp -r .next/* ../functions/.next/ && cp -r .next/.* ../functions/.next/",
+    "deploy": "cd .. && npm run build && firebase deploy",
+    "deploy:functions": "cd .. && npm run build && firebase deploy --only functions",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "caniuse-lite": "^1.0.30001751",
+    "firebase-admin": "^11.0.0",
+    "firebase-functions": "^4.0.0",
+    "next": "^15.3.1",
+    "node-fetch": "^2.7.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "twilio": "^5.6.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/node-fetch": "^2.6.13",
+    "@types/qrcode.react": "^1.0.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.7",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5"
+  }
+}
