@@ -199,19 +199,27 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
     console.log('lndProxy request:', {
       method: req.method,
       path: req.query.path,
+      xForwardedUrl: req.headers['x-forwarded-url'],
       headers: req.headers,
       body: req.body,
     });
 
 
     try {
-      // 1. Validate path
-      const { path } = req.query;
+      // Use x-forwarded-url as fallback if path is undefined
+      let path = req.query.path;
       if (!path || typeof path !== 'string') {
-        return res.status(400).json({
-          error: 'Missing or invalid "path" query parameter',
-          example: '?path=/v1/invoices',
-        });
+        const forwardedUrl = req.headers['x-forwarded-url'];
+        if (forwardedUrl && typeof forwardedUrl === 'string') {
+          const url = new URL(`http://dummy${forwardedUrl}`); // Parse as URL
+          path = url.pathname; // Extract /api/lndProxy/v1/invoices
+        }
+        if (!path) {
+          return res.status(400).json({
+            error: 'Missing or invalid "path" query parameter',
+            example: '?path=/v1/invoices',
+          });
+        }
       }
 
       // 2. Validate method
