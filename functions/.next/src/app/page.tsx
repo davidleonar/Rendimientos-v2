@@ -223,13 +223,15 @@ export default function Home() {
     setPaymentStatus('pending');
   
     try {
+      const value_msat = donationAmount * 1000;
       const body = {
-        value_msat: donationAmount * 1000, // sats → msats
+        value_msat: value_msat, // sats → msats
         memo: 'Donation from App',
         expiry: '300',
         private: false,
         add_index: 1,
       };
+      console.log('Sending donation request:', body);
       const res = await fetch('/api/lndProxy/v1/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
