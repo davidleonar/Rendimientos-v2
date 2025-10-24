@@ -281,8 +281,7 @@ const app = next({
 });
 const handle = app.getRequestHandler();
 
-exports.nextServer = functions
-  .runWith({ memory: '2GB', timeoutSeconds: 120 })
+exports.nextServer = functions.runWith({ memory: '2GB', timeoutSeconds: 120 })
   .https.onRequest(async (req, res) => {
     try {
       await app.prepare();
