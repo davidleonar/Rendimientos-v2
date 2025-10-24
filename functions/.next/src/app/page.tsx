@@ -186,7 +186,7 @@ export default function Home() {
             console.log('Payment settled! Amount:', invoice.amt_paid_sat, 'sats');
 
             // Show success toast (optional: replace with toast library later)
-            alert(`¡Pago recibido! ${Number(invoice.amt_paid_sat) / 1000} sats`);
+            alert(`¡Pago recibido! ${Number(invoice.amt_paid_sat)} sats`);
 
             // Auto-reset after 3 seconds
             setTimeout(() => {
@@ -225,7 +225,7 @@ export default function Home() {
     try {
       const value_msat = donationAmount * 1000;
       const body = {
-        value_msat: value_msat, // sats → msats
+        value_msat: value_msat,
         memo: 'Donation from App',
         expiry: '300',
         private: false,
