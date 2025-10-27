@@ -62,8 +62,14 @@ export default function Home() {
   // State for copy button
   const [copyButtonText, setCopyButtonText] = useState<string>("Copy Payment Request");
 
+  const [isClient, setIsClient] = useState(false);
+
   // Proxy URL from env
   //const proxyUrl = process.env.LND_PROXY_URL || 'https://us-central1-rendimientos-5dbb9.cloudfunctions.net/lndProxy';
+
+  useEffect(() => {
+    setIsClient(true); // Set to true after mounting
+  }, []);
 
   // Fetch BTC/USD price from CoinGecko API every 30 seconds
   useEffect(() => {
@@ -83,7 +89,7 @@ export default function Home() {
     };
 
     fetchPrice(); // Initial fetch
-    const interval = setInterval(fetchPrice, 30000); // Fetch every 30 seconds
+    const interval = setInterval(fetchPrice, 60000); // Fetch every 30 seconds
 
     return () => clearInterval(interval); // Cleanup on unmount
   }, [currentPrice]);
@@ -194,6 +200,7 @@ export default function Home() {
             // Auto-reset after 3 seconds
             setTimeout(() => {
             resetDonation();
+            setLoading(false);
             }, 3000);
           }
         } catch (error) {
@@ -224,6 +231,7 @@ export default function Home() {
     }
     setDonationError(null);
     setPaymentStatus('pending');
+    //setLoading(true);
   
     try {
       const value_msat = donationAmount * 1000;
@@ -248,22 +256,27 @@ export default function Home() {
       }
   
       const data = await res.json();
-      setBolt11(data.payment_request);
-      setPaymentHash(Buffer.from(data.r_hash, 'base64').toString('hex'));
+      console.log("LND response:", data);
+
+      if (data.payment_request) {
+        setBolt11(data.payment_request);
+        setPaymentHash(Buffer.from(data.r_hash, 'base64').toString('hex'));;
+        setPaymentStatus("pending");
+        console.log("Set bolt11:", data.payment_request);
+      } else {
+        throw new Error("No payment_request in LND response");
+      }
+    
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Unknown error';
+      console.error("Donation invoice error:", e);
       setDonationError(message);
       setPaymentStatus(null);
-  }
+    } finally {
+      setLoading(true);
+      console.log("Loading state:", false);
+    }
 };
-
-  const resetDonation = () => {
-    setDonationAmount(0);
-    setBolt11(null);
-    setPaymentHash(null);
-    setPaymentStatus(null);
-    setDonationError(null);
-  };
 
   // Maneja el boton de copiar y pegar
   const handleCopyPaymentRequest = async () => {
@@ -300,7 +313,15 @@ export default function Home() {
       console.error("Clipboard error:", err);
       setCopyButtonText("Copy Failed");
       setTimeout(() => setCopyButtonText("Copy Payment Request"), 2000);
-    }
+      }
+  };
+
+  const resetDonation = () => {
+    setDonationAmount(0);
+    setBolt11(null);
+    setPaymentHash(null);
+    setPaymentStatus(null);
+    setDonationError(null);
   };
 
 
@@ -456,20 +477,25 @@ export default function Home() {
             title={donationAmount <= 0 ? 'Enter an amount greater than 0' : paymentStatus === 'pending' ? 'Waiting for payment' : ''}
           >
             Generate Donation Invoice
-          </button>
-          {bolt11 && (
-          <div className="text-center">
-            <QRCodeCanvas value={bolt11} size={128} className="mx-auto" />
-            <p className="mt-2">Scan to donate {donationAmount} sats</p>
-            <p className="mt-4 text-sm text-gray-300 break-all px-4">
-              Payment Request: {bolt11}
-            </p>
-            <button
-              onClick={handleCopyPaymentRequest}
-              className="mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
-            >
-              {copyButtonText}
             </button>
+          {loading && (
+            <div className="flex justify-center mt-4">
+              <div className="w-8 h-8 border-4 border-t-blue-500 border-gray-300 rounded-full animate-spin"></div>
+            </div>
+          )}
+          {isClient && bolt11 && (
+            <div className="text-center">
+              <QRCodeCanvas value={bolt11} size={128} className="mx-auto" />
+              <p className="mt-2">Scan to donate {donationAmount} sats</p>
+              <p className="mt-4 text-sm text-gray-300 break-all px-4">
+                Payment Request: {bolt11}
+              </p>
+              <button
+                onClick={handleCopyPaymentRequest}
+                className="mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
+              >
+                {copyButtonText}
+              </button>
           </div>
           )}
           {paymentStatus === 'pending' && <p className="text-yellow-400 mt-2">Payment pending...</p>}
