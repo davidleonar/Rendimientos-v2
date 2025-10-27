@@ -200,7 +200,6 @@ export default function Home() {
             // Auto-reset after 3 seconds
             setTimeout(() => {
             resetDonation();
-            setLoading(false);
             }, 3000);
           }
         } catch (error) {
@@ -231,7 +230,7 @@ export default function Home() {
     }
     setDonationError(null);
     setPaymentStatus('pending');
-    //setLoading(true);
+    setLoading(true);
   
     try {
       const value_msat = donationAmount * 1000;
@@ -273,8 +272,7 @@ export default function Home() {
       setDonationError(message);
       setPaymentStatus(null);
     } finally {
-      setLoading(true);
-      console.log("Loading state:", false);
+      setLoading(false);
     }
 };
 
@@ -322,6 +320,7 @@ export default function Home() {
     setPaymentHash(null);
     setPaymentStatus(null);
     setDonationError(null);
+    setLoading(false);
   };
 
 
@@ -479,9 +478,7 @@ export default function Home() {
             Generate Donation Invoice
             </button>
           {loading && (
-            <div className="flex justify-center mt-4">
-              <div className="w-8 h-8 border-4 border-t-blue-500 border-gray-300 rounded-full animate-spin"></div>
-            </div>
+            <div className="flex justify-center mt-4"></div>
           )}
           {isClient && bolt11 && (
             <div className="text-center">
