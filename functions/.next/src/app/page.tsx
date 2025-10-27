@@ -59,6 +59,9 @@ export default function Home() {
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'settled' | null>(null);
   const [donationError, setDonationError] = useState<string | null>(null);
 
+  // State for copy button
+  const [copyButtonText, setCopyButtonText] = useState<string>("Copy Payment Request");
+
   // Proxy URL from env
   //const proxyUrl = process.env.LND_PROXY_URL || 'https://us-central1-rendimientos-5dbb9.cloudfunctions.net/lndProxy';
 
@@ -262,6 +265,44 @@ export default function Home() {
     setDonationError(null);
   };
 
+  // Maneja el boton de copiar y pegar
+  const handleCopyPaymentRequest = async () => {
+    if (!bolt11) {
+      setCopyButtonText("No Payment Request");
+      setTimeout(() => setCopyButtonText("Copy Payment Request"), 2000);
+      return;
+    }
+  
+    try {
+      // Check if Clipboard API is available
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(bolt11);
+        setCopyButtonText("Copied!");
+        setTimeout(() => setCopyButtonText("Copy Payment Request"), 2000);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement("textarea");
+        textArea.value = bolt11;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand("copy");
+          setCopyButtonText("Copied!");
+          setTimeout(() => setCopyButtonText("Copy Payment Request"), 2000);
+        } catch {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          throw new Error("Clipboard copy failed via fallback");
+        } finally {
+          document.body.removeChild(textArea);
+        }
+      }
+    } catch (err) {
+      console.error("Clipboard error:", err);
+      setCopyButtonText("Copy Failed");
+      setTimeout(() => setCopyButtonText("Copy Payment Request"), 2000);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
@@ -417,10 +458,19 @@ export default function Home() {
             Generate Donation Invoice
           </button>
           {bolt11 && (
-            <div className="text-center">
-              <QRCodeCanvas value={bolt11} size={128} className="mx-auto" />
-              <p className="mt-2">Scan to donate {donationAmount} sats</p>
-            </div>
+          <div className="text-center">
+            <QRCodeCanvas value={bolt11} size={128} className="mx-auto" />
+            <p className="mt-2">Scan to donate {donationAmount} sats</p>
+            <p className="mt-4 text-sm text-gray-300 break-all px-4">
+              Payment Request: {bolt11}
+            </p>
+            <button
+              onClick={handleCopyPaymentRequest}
+              className="mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
+            >
+              {copyButtonText}
+            </button>
+          </div>
           )}
           {paymentStatus === 'pending' && <p className="text-yellow-400 mt-2">Payment pending...</p>}
           {paymentStatus === 'settled' && <p className="text-green-400 mt-2">Payment received! Thank you.</p>}

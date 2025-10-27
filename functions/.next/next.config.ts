@@ -28,6 +28,7 @@ const nextConfig = {
  experimental: {
   // This tells Next.js to trust system CAs
   // Works in Turbopack + dev server
+  //server: {https: true}
 },
 
 // Critical: Use node-fetch with proper TLS
