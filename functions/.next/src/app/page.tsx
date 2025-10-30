@@ -283,7 +283,7 @@ const handleSignOut = () => auth.signOut();
   useEffect(() => {
     let interval: NodeJS.Timeout;
     let timeout: NodeJS.Timeout;
-    
+
     if (paymentHash && paymentStatus === 'pending') {
       interval = setInterval(async () => {
         try {
@@ -438,7 +438,12 @@ const handleSignOut = () => auth.signOut();
     setLoading(false);
   };
 
-
+  /*
+  if (loadingAuth) {
+    return <div className="flex justify-center items-center h-screen">Loading authentication...</div>;
+  }
+  */
+ 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
       <div className="bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md">
