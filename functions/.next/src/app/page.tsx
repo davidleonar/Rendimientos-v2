@@ -5,8 +5,7 @@ import { ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { auth } from '../app/lib/firebase'; // Adjust path
 import {
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPhoneNumber,
-  RecaptchaVerifier, UserCredential
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, UserCredential
 } from 'firebase/auth';
 import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-firebase-hooks
 //import { text } from "stream/consumers";
@@ -62,7 +61,7 @@ export default function Home() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // States for donations
-  const [donationAmount, setDonationAmount] = useState<number>(0);
+  const [donationAmount, setDonationAmount] = useState<number>(1000); // Default 1000 sats
   const [bolt11, setBolt11] = useState<string | null>(null);
   const [paymentHash, setPaymentHash] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'settled' | null>(null);
@@ -78,8 +77,8 @@ export default function Home() {
   const [user, loadingAuth, errorAuth] = useAuthState(auth);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [verificationCode, setVerificationCode] = useState(''); // ← Now used in phone confirmation
+  //const [phone, setPhone] = useState('');
+  //const [verificationCode, setVerificationCode] = useState(''); // ← Now used in phone confirmation
 
   // Para el rendering automatico
   useEffect(() => {
@@ -91,6 +90,7 @@ export default function Home() {
     try {
       const userCredential: UserCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log('User created:', userCredential.user);
+      setError(null); // Clear previous errors on success
     } catch (err) {
       const error = err as Error; // Cast to Error
       setError(error.message);
@@ -101,12 +101,13 @@ export default function Home() {
     try {
       const userCredential: UserCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log('Logged in:', userCredential.user);
+      setError(null); // Clear previous errors on success
     } catch (err) {
       const error = err as Error;
       setError(error.message);
     }
   };
-
+  /*
   // Phone Auth (requires reCAPTCHA)
     useEffect(() => {
       if (typeof window !== 'undefined') {
@@ -124,7 +125,7 @@ export default function Home() {
         setError(error.message);
       }
     };
-
+  */
   /* OAuth Providers
   const handleOAuthLogin = async (provider: AuthProvider) => {
     try {
@@ -340,13 +341,8 @@ const handleSignOut = () => auth.signOut();
     setLoading(true);
 
     try {
-      const auth = getAuth();
-      const user = auth.currentUser;
-
-      if (!user) throw new Error("User not authenticated");
 
       // 1. Get the Firebase ID token from the logged-in user.
-      const idToken = await user.getIdToken();
       const value_msat = donationAmount * 1000;
       const body = {
         value_msat: value_msat,
@@ -358,8 +354,7 @@ const handleSignOut = () => auth.signOut();
       console.log('Sending donation request:', body);
       const res = await fetch('/api/lndProxy/v1/invoices', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${idToken}`,
-                  'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
     
@@ -483,8 +478,7 @@ const handleSignOut = () => auth.signOut();
               Registrarse con Email
             </button>
             
-            {/* Phone */}
-            <input
+            {/* Phone  <input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)} // ← Use setPhone
@@ -494,8 +488,10 @@ const handleSignOut = () => auth.signOut();
             <button onClick={handlePhoneLogin} className="w-full px-4 py-2 bg-blue-600 rounded text-white mb-4">
               Iniciar Sesión con Teléfono
             </button>
+             */}
+           
             {/* If SMS code prompted, add input (handle in handlePhoneLogin or separate state) */}
-            {verificationCode && ( // ← Conditional to show code input after SMS sent
+            {/* verificationCode && ( // ← Conditional to show code input after SMS sent
               <input
                 type="text"
                 value={verificationCode}
@@ -503,7 +499,7 @@ const handleSignOut = () => auth.signOut();
                 placeholder="Código de Verificación"
                 className="w-full p-2 bg-gray-600 rounded text-white mb-2"
               />
-            )}
+            )*/}
             
             {/* OAuth Buttons  <button onClick={} className="w-full px-4 py-2 bg-black rounded text-white mb-2">
               Iniciar con Apple
