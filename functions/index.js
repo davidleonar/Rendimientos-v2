@@ -43,14 +43,19 @@ initializeApp({
 
 // Middleware to verify token
 async function verifyToken(req, res) {
-  const idToken = req.headers.authorization?.split('Bearer ')[1];
-  if (!idToken) return res.status(401).send('Unauthorized');
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).send('Unauthorized: No token provided.');
+    return false; // Indicate failure
+  }
+  const idToken = authHeader.split('Bearer ')[1];
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
     req.user = decoded; // Attach user to req
     return true;
   } catch (err) {
-    return res.status(401).send('Invalid token');
+    res.status(401).send('Unauthorized: Invalid token.');
+    return false; // Indicate failure
   }
 }
 
@@ -111,30 +116,14 @@ async function fetchSpreadsheetDataById(spreadsheetId, range, id) {
 exports.getDataById = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
 
-    if (!(await verifyToken(req, res))) return; // Verify token
-
-    //res.set('Access-Control-Allow-Origin', '*'); // Or your specific domain
-    //res.set('Access-Control-Allow-Headers', 'Authorization');
-    
-    console.log('getDataById request:', {
-      method: req.method,
-      path: req.query.path,
-      //xForwardedUrl: req.headers['x-forwarded-url'],
-      headers: req.headers,
-      body: req.body,
-    });
-
-    // 1. Check for the Authorization header
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error('No token provided or malformed header');
-      res.status(401).send('Unauthorized: No token provided.');
+    // The verifyToken middleware now handles sending the response on failure.
+    // If it returns false, we just stop.
+    const isAuthenticated = await verifyToken(req, res);
+    if (!isAuthenticated) {
       return;
     }
 
-    const idToken = authHeader.split('Bearer ')[1];
-
-    
+    console.log(`Request authenticated for user: ${req.user.uid}`);
 
     if (req.method !== 'GET') {
       return res.status(405).send('Method Not Allowed. Use GET.');
