@@ -229,8 +229,7 @@ const handleSignOut = () => auth.signOut();
         `https://us-central1-rendimientos-5dbb9.cloudfunctions.net/getMovementsById?id=${id}`,
         { method: "GET",
           headers: {
-            'Authorization': `Bearer ${idToken}`, // <-- This is the crucial part
-            'Content-Type': 'application/json'
+            Authorization: `Bearer ${idToken}`, // <-- This is the crucial part
          }}
       );
       if (!response.ok) {
@@ -338,8 +337,15 @@ const handleSignOut = () => auth.signOut();
     setDonationError(null);
     setPaymentStatus('pending');
     setLoading(true);
-  
+
     try {
+       const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (!user) throw new Error("User not authenticated");
+
+      // 1. Get the Firebase ID token from the logged-in user.
+      const idToken = await user.getIdToken();
       const value_msat = donationAmount * 1000;
       const body = {
         value_msat: value_msat,
@@ -351,7 +357,8 @@ const handleSignOut = () => auth.signOut();
       console.log('Sending donation request:', body);
       const res = await fetch('/api/lndProxy/v1/invoices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${idToken}`,
+                  'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
     

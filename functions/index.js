@@ -124,10 +124,7 @@ exports.getDataById = functions.https.onRequest((req, res) => {
 
     // The verifyToken middleware now handles sending the response on failure.
     // If it returns false, we just stop.
-    const isAuthenticated = await verifyToken(req, res);
-    if (!isAuthenticated) {
-      return;
-    }
+    if (!(await verifyToken(req, res))) return;
 
     console.log(`Request authenticated for user: ${req.user.uid}`);
 
