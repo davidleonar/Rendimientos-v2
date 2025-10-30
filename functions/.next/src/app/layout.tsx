@@ -33,7 +33,7 @@ export default function RootLayout({
         <meta property="og:url" content="https://rendimientos-5dbb9.web.app/" />
         <meta property="og:type" content="website" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="DPS Direct Provider Services" />
+        <meta name="twitter:title" content="Rendimientos App" />
         <meta name="twitter:description" content="Ahorra BTC de manera soberana" />
         <meta name="twitter:image" content="/logo.png" />
       </Head>

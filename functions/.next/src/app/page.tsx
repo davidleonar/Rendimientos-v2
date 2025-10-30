@@ -2,7 +2,14 @@
 import { useState, useEffect } from "react";
 import '../app/globals.css';
 import { ArrowsUpDownIcon } from '@heroicons/react/24/outline';
-import { QRCodeCanvas } from 'qrcode.react';  // Use named export
+import { QRCodeCanvas } from 'qrcode.react'; 
+import { auth } from '../app/lib/firebase'; // Adjust path
+import {
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPhoneNumber,
+  RecaptchaVerifier, UserCredential
+} from 'firebase/auth';
+import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-firebase-hooks
+//import { text } from "stream/consumers";
 
 export const dynamic = 'force-dynamic';
 
@@ -62,16 +69,82 @@ export default function Home() {
   // State for copy button
   const [copyButtonText, setCopyButtonText] = useState<string>("Copy Payment Request");
 
+  // State for rendering automatico
   const [isClient, setIsClient] = useState(false);
 
-  // Proxy URL from env
-  //const proxyUrl = process.env.LND_PROXY_URL || 'https://us-central1-rendimientos-5dbb9.cloudfunctions.net/lndProxy';
+  //States para login
+  const [user, loadingAuth, errorAuth] = useAuthState(auth);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [verificationCode, setVerificationCode] = useState(''); // ← Now used in phone confirmation
 
+  // Para el rendering automatico
   useEffect(() => {
     setIsClient(true); // Set to true after mounting
   }, []);
 
-  // Fetch BTC/USD price from CoinGecko API every 30 seconds
+  // Sign-up/Login with Email
+  const handleEmailSignUp = async () => {
+    try {
+      const userCredential: UserCredential = await createUserWithEmailAndPassword(auth, email, password);
+      console.log('User created:', userCredential.user);
+    } catch (err) {
+      const error = err as Error; // Cast to Error
+      setError(error.message);
+    }
+  };
+
+  const handleEmailLogin = async () => {
+    try {
+      const userCredential: UserCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log('Logged in:', userCredential.user);
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+    }
+  };
+
+  // Phone Auth (requires reCAPTCHA)
+    useEffect(() => {
+      if (typeof window !== 'undefined') {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+      }
+    }, []);
+
+    const handlePhoneLogin = async () => {
+      try {
+        const confirmation = await signInWithPhoneNumber(auth, phone, window.recaptchaVerifier);
+        const code = verificationCode; // ← Use state (or prompt for testing)
+        if (code) await confirmation.confirm(code);
+      } catch (err) {
+        const error = err as Error;
+        setError(error.message);
+      }
+    };
+
+  /* OAuth Providers
+  const handleOAuthLogin = async (provider: AuthProvider) => {
+    try {
+      const result: UserCredential = await signInWithPopup(auth, provider);
+      console.log('OAuth user:', result.user);
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+    }
+  };
+  */
+
+  // Usage examples:
+
+// Apple: handleOAuthLogin(new AppleAuthProvider()); poner en el import, no olvidar "AppleAuthProvider()"
+// Twitter: handleOAuthLogin(new TwitterAuthProvider());
+// Microsoft: const msProvider = new OAuthProvider('microsoft.com'); handleOAuthLogin(msProvider);
+
+// Sign out
+const handleSignOut = () => auth.signOut();
+
+  // Fetch BTC/USD price from CoinGecko API every 60 seconds
   useEffect(() => {
     const fetchPrice = async () => {
       try {
@@ -89,7 +162,7 @@ export default function Home() {
     };
 
     fetchPrice(); // Initial fetch
-    const interval = setInterval(fetchPrice, 60000); // Fetch every 30 seconds
+    const interval = setInterval(fetchPrice, 600000); // Fetch every 60 seconds
 
     return () => clearInterval(interval); // Cleanup on unmount
   }, [currentPrice]);
@@ -176,7 +249,10 @@ export default function Home() {
   };
 
 
-  // Notificaciones para el estado de la factura
+
+  /* ------------------------------------------------------------------ */
+  /*  Notificaciones para el estado de la factura                       */
+  /* ------------------------------------------------------------------ */
   useEffect(() => {
     let interval: NodeJS.Timeout;
     let timeout: NodeJS.Timeout;
@@ -222,7 +298,10 @@ export default function Home() {
     };
   }, [paymentHash, paymentStatus]);
 
-  // generar la factura
+
+  /* ------------------------------------------------------------------ */
+  /*  Generar la factura                                                */
+  /* ------------------------------------------------------------------ */
   const generateDonationInvoice = async () => {
     if (donationAmount <= 0) {
       setDonationError('Amount must be greater than 0');
@@ -327,16 +406,91 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
       <div className="bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md">
-        {/* BTC/USD Price Banner */}
-        {currentPrice !== null ? (
-          <div className={`mb-4 p-2 rounded text-center ${getColorClass()}`}>
-            <p>BTC/USD: ${currentPrice.toLocaleString()}</p>
+
+      {loadingAuth ? (
+          <p className="text-center">Cargando autenticación...</p>
+        ) : user ? (
+          <div className="text-center mb-4">
+            <p>Bienvenido, {user.displayName || user.email}!</p>
+            <button onClick={handleSignOut} className="px-4 py-2 bg-red-600 rounded text-white hover:bg-red-700">
+              Cerrar Sesión
+            </button>
           </div>
         ) : (
-          <div className="mb-4 p-2 rounded text-center text-gray-400">
-            <p>Loading BTC price...</p>
+          <div className="mt-6 p-4 bg-gray-800 rounded">
+            <h2 className="text-xl font-bold mb-4 text-center">Iniciar Sesión / Registrarse</h2>
+            
+            {/* Email/Password */}
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)} // ← Use setEmail
+              placeholder="Email"
+              className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)} // ← Use setPassword
+              placeholder="Contraseña"
+              className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+            />
+            <button onClick={handleEmailLogin} className="w-full px-4 py-2 bg-blue-600 rounded text-white mb-2">
+              Iniciar Sesión con Email
+            </button>
+            <button onClick={handleEmailSignUp} className="w-full px-4 py-2 bg-green-600 rounded text-white mb-4">
+              Registrarse con Email
+            </button>
+            
+            {/* Phone */}
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)} // ← Use setPhone
+              placeholder="Número de Teléfono (e.g., +1234567890)"
+              className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+            />
+            <button onClick={handlePhoneLogin} className="w-full px-4 py-2 bg-blue-600 rounded text-white mb-4">
+              Iniciar Sesión con Teléfono
+            </button>
+            {/* If SMS code prompted, add input (handle in handlePhoneLogin or separate state) */}
+            {verificationCode && ( // ← Conditional to show code input after SMS sent
+              <input
+                type="text"
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value)} // ← Use setVerificationCode
+                placeholder="Código de Verificación"
+                className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+              />
+            )}
+            
+            {/* OAuth Buttons  <button onClick={} className="w-full px-4 py-2 bg-black rounded text-white mb-2">
+              Iniciar con Apple
+            </button>
+            <button onClick={() => handleOAuthLogin(new TwitterAuthProvider())} className="w-full px-4 py-2 bg-blue-400 rounded text-white mb-2">
+              Iniciar con Twitter
+            </button>
+            <button onClick={() => handleOAuthLogin(new OAuthProvider('microsoft.com'))} className="w-full px-4 py-2 bg-purple-600 rounded text-white">
+              Iniciar con Microsoft
+            </button>*/}
+          
+            
+            {errorAuth && <p className="text-red-400 mt-2">{errorAuth.message} - // ← Use errorAuth</p>} 
           </div>
         )}
+        {/* Add reCAPTCHA container (hidden) */}
+        <div id="recaptcha-container" className="hidden"></div>
+
+          {/* BTC/USD Price Banner */}
+          {currentPrice !== null ? (
+            <div className={`mb-4 p-2 rounded text-center ${getColorClass()}`}>
+              <p>BTC/USD: ${currentPrice.toLocaleString()}</p>
+            </div>
+          ) : (
+            <div className="mb-4 p-2 rounded text-center text-gray-400">
+              <p>Loading BTC price...</p>
+            </div>
+          )}
 
         <h1 className="text-2xl font-bold mb-4 text-center">Saldos de Cuenta</h1>
         <form onSubmit={handleSubmit} className="flex items-center space-x-2 mb-4">

@@ -20,6 +20,7 @@ const {onRequest} = require("firebase-functions/v2/https"); //para tomar conf de
 const {defineString} = require("firebase-functions/params"); //para tomar la conf de firebase
 const next = require('next');
 const path = require('path');
+const admin = require('firebase-admin');
 
 const lndUrl = 'http://35.208.122.165:3000'; // e.g., IP publica de la VM Proxy 35.208.122.165
 const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
@@ -34,6 +35,19 @@ const agent = new https.Agent({
   rejectUnauthorized: false, // Enforce cert
 });
 */
+
+// Middleware to verify token
+async function verifyToken(req, res) {
+  const idToken = req.headers.authorization?.split('Bearer ')[1];
+  if (!idToken) return res.status(401).send('Unauthorized');
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    req.user = decoded; // Attach user to req
+    return true;
+  } catch (err) {
+    return res.status(401).send('Invalid token');
+  }
+}
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -96,6 +110,7 @@ async function fetchSpreadsheetDataById(spreadsheetId, range, id) {
 
 exports.getDataById = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
+    if (!(await verifyToken(req, res))) return;
     if (req.method !== 'GET') {
       return res.status(405).send('Method Not Allowed. Use GET.');
     }
@@ -159,6 +174,7 @@ exports.getDataById = functions.https.onRequest((req, res) => {
 // New function: getMovementsById
 exports.getMovementsById = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
+    if (!(await verifyToken(req, res))) return;
     if (req.method !== 'GET') {
       return res.status(405).send('Method Not Allowed. Use GET.');
     }
@@ -195,6 +211,7 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 // LND proxy para conectar con el Nodo Umbrel
 exports.lndProxy = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
+    if (!(await verifyToken(req, res))) return;
 
     console.log('lndProxy request:', {
       method: req.method,
