@@ -283,6 +283,7 @@ const handleSignOut = () => auth.signOut();
   useEffect(() => {
     let interval: NodeJS.Timeout;
     let timeout: NodeJS.Timeout;
+    
     if (paymentHash && paymentStatus === 'pending') {
       interval = setInterval(async () => {
         try {
@@ -339,7 +340,7 @@ const handleSignOut = () => auth.signOut();
     setLoading(true);
 
     try {
-       const auth = getAuth();
+      const auth = getAuth();
       const user = auth.currentUser;
 
       if (!user) throw new Error("User not authenticated");

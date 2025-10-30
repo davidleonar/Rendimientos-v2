@@ -7,6 +7,13 @@
       "static/chunks/main-app-1113374ca494f3e3.js",
       "static/chunks/app/_not-found/page-56cb97e2702027d3.js"
     ],
+    "/api/lndProxy/[...path]/route": [
+      "static/chunks/webpack-a2fa3e244b76286a.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-cf2e1d3491ac955b.js",
+      "static/chunks/main-app-1113374ca494f3e3.js",
+      "static/chunks/app/api/lndProxy/[...path]/route-cee9b8beb1ae10e7.js"
+    ],
     "/layout": [
       "static/chunks/webpack-a2fa3e244b76286a.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
@@ -15,13 +22,6 @@
       "static/css/de70bee13400563f.css",
       "static/css/5724f5db0093050e.css",
       "static/chunks/app/layout-a92d41e03a1c99ed.js"
-    ],
-    "/api/lndProxy/[...path]/route": [
-      "static/chunks/webpack-a2fa3e244b76286a.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-cf2e1d3491ac955b.js",
-      "static/chunks/main-app-1113374ca494f3e3.js",
-      "static/chunks/app/api/lndProxy/[...path]/route-cee9b8beb1ae10e7.js"
     ],
     "/page": [
       "static/chunks/webpack-a2fa3e244b76286a.js",

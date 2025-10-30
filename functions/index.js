@@ -228,7 +228,7 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 // LND proxy para conectar con el Nodo Umbrel
 exports.lndProxy = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
-    if (!(await verifyToken(req, res))) return;
+    //if (!(await verifyToken(req, res))) return;
 
     console.log('lndProxy request:', {
       method: req.method,
