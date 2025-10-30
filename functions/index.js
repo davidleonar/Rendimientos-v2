@@ -44,6 +44,12 @@ initializeApp({
 // Middleware to verify token
 async function verifyToken(req, res) {
   const authHeader = req.headers.authorization;
+  console.log('verifyToken request:', {
+      method: req.method,
+      path: req.query.path,
+      headers: req.headers,
+      body: req.body,
+    });
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     res.status(401).send('Unauthorized: No token provided.');
     return false; // Indicate failure

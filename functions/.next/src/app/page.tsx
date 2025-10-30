@@ -11,6 +11,8 @@ import {
 import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-firebase-hooks
 //import { text } from "stream/consumers";
 
+import { getAuth } from 'firebase/auth';
+
 export const dynamic = 'force-dynamic';
 
 // Interface for balance data (from getDataById)
@@ -182,14 +184,27 @@ const handleSignOut = () => auth.signOut();
     setError(null);
     setMovements([]); // Reset movements when fetching new balance data
     try {
+
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (!user) throw new Error("User not authenticated");
+
+      // 1. Get the Firebase ID token from the logged-in user.
+      const idToken = await user.getIdToken();
+
       const response = await fetch(
         `https://us-central1-rendimientos-5dbb9.cloudfunctions.net/getDataById?id=${id}`,
-        { method: "GET" }
+        { method: "GET",
+          headers: {
+            Authorization: `Bearer ${idToken}`, // <-- This is the crucial part
+         }}
       );
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const result = await response.json();
+      console.log("Successfully fetched data:", result);
       setData(result.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -202,14 +217,27 @@ const handleSignOut = () => auth.signOut();
     setLoading(true);
     setError(null);
     try {
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (!user) throw new Error("User not authenticated");
+
+      // 1. Get the Firebase ID token from the logged-in user.
+      const idToken = await user.getIdToken();
+
       const response = await fetch(
         `https://us-central1-rendimientos-5dbb9.cloudfunctions.net/getMovementsById?id=${id}`,
-        { method: "GET" }
+        { method: "GET",
+          headers: {
+            'Authorization': `Bearer ${idToken}`, // <-- This is the crucial part
+            'Content-Type': 'application/json'
+         }}
       );
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const result = await response.json();
+      console.log("Successfully fetched data:", result);
       setMovements(result.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch movements");
