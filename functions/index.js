@@ -36,6 +36,11 @@ const agent = new https.Agent({
 });
 */
 
+// Initialize Firebase Admin SDK
+initializeApp({
+  credential: applicationDefault(),
+});
+
 // Middleware to verify token
 async function verifyToken(req, res) {
   const idToken = req.headers.authorization?.split('Bearer ')[1];
@@ -48,11 +53,6 @@ async function verifyToken(req, res) {
     return res.status(401).send('Invalid token');
   }
 }
-
-// Initialize Firebase Admin SDK
-initializeApp({
-  credential: applicationDefault(),
-});
 
 const db = getFirestore();
 
@@ -110,7 +110,32 @@ async function fetchSpreadsheetDataById(spreadsheetId, range, id) {
 
 exports.getDataById = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
-    if (!(await verifyToken(req, res))) return;
+
+    if (!(await verifyToken(req, res))) return; // Verify token
+
+    //res.set('Access-Control-Allow-Origin', '*'); // Or your specific domain
+    //res.set('Access-Control-Allow-Headers', 'Authorization');
+    
+    console.log('getDataById request:', {
+      method: req.method,
+      path: req.query.path,
+      //xForwardedUrl: req.headers['x-forwarded-url'],
+      headers: req.headers,
+      body: req.body,
+    });
+
+    // 1. Check for the Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('No token provided or malformed header');
+      res.status(401).send('Unauthorized: No token provided.');
+      return;
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+
+    
+
     if (req.method !== 'GET') {
       return res.status(405).send('Method Not Allowed. Use GET.');
     }
