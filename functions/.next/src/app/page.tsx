@@ -425,7 +425,7 @@ const handleSignOut = () => auth.signOut();
   };
 
   const resetDonation = () => {
-    setDonationAmount(0);
+    setDonationAmount(1000);
     setBolt11(null);
     setPaymentHash(null);
     setPaymentStatus(null);
@@ -656,7 +656,7 @@ const handleSignOut = () => auth.signOut();
           <input
             type="number"
             value={donationAmount}
-            onChange={(e) => setDonationAmount(parseInt(e.target.value) || 0)}
+            onChange={(e) => setDonationAmount(parseInt(e.target.value) || 1000)}
             placeholder="Amount (sat)"
             className="w-full p-2 bg-gray-600 rounded text-white mb-2"
           />

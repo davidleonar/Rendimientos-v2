@@ -6,9 +6,7 @@
           "-y", 
           "firebase-tools@latest", 
           "experimental:mcp",
-          "--project", "rendimientos-5dbb9",
-          "--dir", "/my-project",
-          "--only", "auth,firestore"
+          "--dir", "."
         ]
       }
     }
