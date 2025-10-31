@@ -11,6 +11,7 @@ const functions = require('firebase-functions');
 const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+const { getDatabase } = require('firebase-admin/database');
 const cors = require('cors')({ origin: true }); // Enable CORS for all origins
 const http = require('http');
 const https = require('https');
@@ -39,6 +40,7 @@ const agent = new https.Agent({
 // Initialize Firebase Admin SDK
 initializeApp({
   credential: applicationDefault(),
+  databaseURL: "https://rendimientos-5dbb9-default-rtdb.firebaseio.com/"
 });
 
 // Middleware to verify token
@@ -66,6 +68,91 @@ async function verifyToken(req, res) {
 }
 
 const db = getFirestore();
+const rtdb = getDatabase();
+
+// Helper function to fetch all spreadsheet data
+async function fetchAllSpreadsheetData(spreadsheetId, range) {
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range,
+    });
+
+    const rows = response.data.values;
+
+    if (!rows || rows.length === 0) {
+      console.log('No data found in spreadsheet.');
+      return [];
+    }
+
+    const headers = rows[0];
+    const data = rows.slice(1).map((row) => {
+      const rowData = {};
+      headers.forEach((header, index) => {
+        rowData[header] = row[index] || null;
+      });
+      return rowData;
+    });
+
+    return data;
+  } catch (error) {
+    console.error('Error fetching spreadsheet data:', error);
+    throw error;
+  }
+}
+
+exports.syncSheetsToRTDB = functions.https.onRequest(async (req, res) => {
+  console.log('syncSheetsToRTDB function started.');
+  try {
+    // 1. Fetch Balances
+    console.log('Fetching balances data...');
+    const balancesSheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
+    const balancesRange = 'Sheet1!A1:G50';
+    const balancesData = await fetchAllSpreadsheetData(balancesSheetId, balancesRange);
+    console.log(`Fetched ${balancesData.length} balances.`);
+
+    // 2. Fetch Movements
+    console.log('Fetching movements data...');
+    const movementsSheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
+    const movementsRange = 'Sheet1!A1:G82';
+    const movementsData = await fetchAllSpreadsheetData(movementsSheetId, movementsRange);
+    console.log(`Fetched ${movementsData.length} movements.`);
+
+    // 3. Restructure data
+    console.log('Restructuring data...');
+    const rtdbData = {
+      balances: {},
+    };
+
+    balancesData.forEach((item) => {
+      if (item.id) {
+        rtdbData.balances[item.id] = item;
+      }
+    });
+
+    movementsData.forEach((item) => {
+      if (item.id && rtdbData.balances[item.id]) {
+        if (!rtdbData.balances[item.id].movements) {
+          rtdbData.balances[item.id].movements = [];
+        }
+        rtdbData.balances[item.id].movements.push(item);
+      }
+    });
+    console.log('Data restructured.');
+
+    // 4. Write to Realtime Database
+    console.log('Writing data to Realtime Database...');
+    await rtdb.ref().set(rtdbData);
+    console.log('Data successfully written to Realtime Database.');
+
+    res.status(200).send('Successfully synced spreadsheet data to Realtime Database.');
+    console.log('syncSheetsToRTDB function finished successfully.');
+  } catch (error) {
+    console.error('Error syncing data to RTDB:', error);
+    res.status(500).send('Internal Server Error');
+    console.log('syncSheetsToRTDB function finished with error.');
+  }
+});
 
 // Google Sheets configuration
 const sheets = google.sheets({
