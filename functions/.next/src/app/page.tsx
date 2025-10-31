@@ -11,6 +11,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-f
 //import { text } from "stream/consumers";
 
 import { getAuth } from 'firebase/auth';
+import { Buffer } from 'buffer';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,9 +67,21 @@ export default function Home() {
   const [paymentHash, setPaymentHash] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'settled' | null>(null);
   const [donationError, setDonationError] = useState<string | null>(null);
+  const [showDonations, setShowDonations] = useState<boolean>(false);
 
   // State for copy button
   const [copyButtonText, setCopyButtonText] = useState<string>("Copy Payment Request");
+  const [copySavingsButtonText, setCopySavingsButtonText] = useState<string>("Copy Payment Request");
+
+  // States for savings
+  const [showSavings, setShowSavings] = useState<boolean>(false);
+  const [savingsOption, setSavingsOption] = useState<'bancosColombia' | 'btcLightning' | null>(null);
+  const [savingsAmount, setSavingsAmount] = useState<number>(1000);
+  const [savingsBolt11, setSavingsBolt11] = useState<string | null>(null);
+  const [savingsPaymentStatus, setSavingsPaymentStatus] = useState<'pending' | 'settled' | null>(null);
+  const [savingsError, setSavingsError] = useState<string | null>(null);
+  const [savingsLoading, setSavingsLoading] = useState<boolean>(false);
+  const [savingsPaymentHash, setSavingsPaymentHash] = useState<string | null>(null);
 
   // State for rendering automatico
   const [isClient, setIsClient] = useState(false);
@@ -145,7 +158,10 @@ export default function Home() {
 // Microsoft: const msProvider = new OAuthProvider('microsoft.com'); handleOAuthLogin(msProvider);
 
 // Sign out
-const handleSignOut = () => auth.signOut();
+const handleSignOut = () => {
+    auth.signOut();
+    window.location.reload();
+  };
 
   // Fetch BTC/USD price from CoinGecko API every 60 seconds
   useEffect(() => {
@@ -411,7 +427,6 @@ const handleSignOut = () => auth.signOut();
           setCopyButtonText("Copied!");
           setTimeout(() => setCopyButtonText("Copy Payment Request"), 2000);
         } catch {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           throw new Error("Clipboard copy failed via fallback");
         } finally {
           document.body.removeChild(textArea);
@@ -432,6 +447,142 @@ const handleSignOut = () => auth.signOut();
     setDonationError(null);
     setLoading(false);
   };
+
+  const resetSavings = () => {
+    setSavingsAmount(1000);
+    setSavingsBolt11(null);
+    setSavingsPaymentHash(null);
+    setSavingsPaymentStatus(null);
+    setSavingsError(null);
+    setSavingsLoading(false);
+  };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    let timeout: NodeJS.Timeout;
+
+    if (savingsPaymentHash && savingsPaymentStatus === 'pending') {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/lndProxy/v1/invoice/${savingsPaymentHash}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to check invoice`);
+          
+          const invoice: InvoiceStatus = await res.json();
+          
+          if (invoice.settled) {
+            setSavingsPaymentStatus('settled');
+            console.log('Savings settled! Amount:', invoice.amt_paid_sat, 'sats');
+            alert(`¡Ahorro recibido! ${Number(invoice.amt_paid_sat)} sats`);
+            setTimeout(() => {
+            resetSavings();
+            }, 3000);
+          }
+        } catch (error) {
+          console.error('Check savings status error:', error);
+          setSavingsError('Failed to check payment status');
+        }
+      }, 10000);
+  
+      timeout = setTimeout(() => {
+        setSavingsPaymentStatus(null);
+        setSavingsError('Savings check timed out');
+        clearInterval(interval);
+      }, 300000);
+    }
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [savingsPaymentHash, savingsPaymentStatus, resetSavings]);
+
+  const generateSavingsInvoice = async () => {
+    if (savingsAmount <= 0) {
+      setSavingsError('Amount must be greater than 0');
+      return;
+    }
+    setSavingsError(null);
+    setSavingsPaymentStatus('pending');
+    setSavingsLoading(true);
+
+    try {
+      const value_msat = savingsAmount * 1000;
+      const body = {
+        value_msat: value_msat,
+        memo: 'Savings from App',
+        expiry: '300',
+        private: false,
+        add_index: 1,
+      };
+      console.log('Sending savings request:', body);
+      const res = await fetch('/api/lndProxy/v1/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Proxy error:', errorText);
+        throw new Error(`Server error: ${res.status}`);
+      }
+  
+      const data = await res.json();
+      console.log("LND response:", data);
+
+      if (data.payment_request) {
+        setSavingsBolt11(data.payment_request);
+        setSavingsPaymentHash(Buffer.from(data.r_hash, 'base64').toString('hex'));
+        setSavingsPaymentStatus("pending");
+        console.log("Set savings bolt11:", data.payment_request);
+      } else {
+        throw new Error("No payment_request in LND response");
+      }
+    
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      console.error("Savings invoice error:", e);
+      setSavingsError(message);
+      setSavingsPaymentStatus(null);
+    } finally {
+      setSavingsLoading(false);
+    }
+  };
+
+  const handleCopySavingsRequest = async () => {
+    if (!savingsBolt11) {
+      setCopySavingsButtonText("No Payment Request");
+      setTimeout(() => setCopySavingsButtonText("Copy Payment Request"), 2000);
+      return;
+    }
+  
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(savingsBolt11);
+        setCopySavingsButtonText("Copied!");
+        setTimeout(() => setCopySavingsButtonText("Copy Payment Request"), 2000);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = savingsBolt11;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand("copy");
+          setCopySavingsButtonText("Copied!");
+          setTimeout(() => setCopySavingsButtonText("Copy Payment Request"), 2000);
+        } catch {
+          throw new Error("Clipboard copy failed via fallback");
+        } finally {
+          document.body.removeChild(textArea);
+        }
+      }
+    } catch (err) {
+      console.error("Clipboard error:", err);
+      setCopySavingsButtonText("Copy Failed");
+      setTimeout(() => setCopySavingsButtonText("Copy Payment Request"), 2000);
+      }
+  };
+
+
 
   /*
   if (loadingAuth) {
@@ -651,52 +802,150 @@ const handleSignOut = () => auth.signOut();
           </div>
         )}
 
-        <div className="mt-6">
-          <h2 className="text-xl font-bold mb-4 text-center">Donations</h2>
-          <input
-            type="number"
-            value={donationAmount}
-            onChange={(e) => setDonationAmount(parseInt(e.target.value) || 1000)}
-            placeholder="Amount (sat)"
-            className="w-full p-2 bg-gray-600 rounded text-white mb-2"
-          />
-          <button
-            onClick={generateDonationInvoice}
-            disabled={donationAmount <= 0 || paymentStatus === 'pending'}
-            className="w-full px-4 py-2 bg-blue-600 rounded mb-4 disabled:bg-gray-500"
-            title={donationAmount <= 0 ? 'Enter an amount greater than 0' : paymentStatus === 'pending' ? 'Waiting for payment' : ''}
-          >
-            Generate Donation Invoice
-            </button>
-          {loading && (
-            <div className="flex justify-center mt-4"></div>
-          )}
-          {isClient && bolt11 && (
-            <div className="text-center">
-              <QRCodeCanvas value={bolt11} size={128} className="mx-auto" />
-              <p className="mt-2">Scan to donate {donationAmount} sats</p>
-              <p className="mt-4 text-sm text-gray-300 break-all px-4">
-                Payment Request: {bolt11}
-              </p>
-              <button
-                onClick={handleCopyPaymentRequest}
-                className="mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
-              >
-                {copyButtonText}
-              </button>
-          </div>
-          )}
-          {paymentStatus === 'pending' && <p className="text-yellow-400 mt-2">Payment pending...</p>}
-          {paymentStatus === 'settled' && <p className="text-green-400 mt-2">Payment received! Thank you.</p>}
-          {paymentStatus === 'settled' && (
-            <button
-              onClick={resetDonation}
-              className="w-full mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700"
+        {user && (
+          <div className="mt-6">
+            <h2
+              className="text-xl font-bold mb-4 text-center cursor-pointer"
+              onClick={() => setShowSavings(!showSavings)}
             >
-              Create New Donation
-            </button>
+              Ahorra Aqui {showSavings ? '▲' : '▼'}
+            </h2>
+            {showSavings && (
+              <div className="bg-gray-700 p-4 rounded shadow">
+                <div className="flex flex-col space-y-4">
+                  <button
+                    onClick={() => setSavingsOption('bancosColombia')}
+                    className={`px-4 py-2 rounded ${
+                      savingsOption === 'bancosColombia' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    Bancos Colombia
+                  </button>
+                  <button
+                    onClick={() => setSavingsOption('btcLightning')}
+                    className={`px-4 py-2 rounded ${
+                      savingsOption === 'btcLightning' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    BTC Lightning
+                  </button>
+                </div>
+
+                {savingsOption === 'bancosColombia' && (
+                  <div className="mt-4 text-center p-4 bg-gray-800 rounded">
+                    <p className="text-lg">@3014375496</p>
+                  </div>
+                )}
+
+                {savingsOption === 'btcLightning' && (
+                  <div className="mt-4">
+                    <h3 className="text-lg font-semibold mb-2 text-center">Savings (BTC Lightning)</h3>
+                    <input
+                      type="number"
+                      value={savingsAmount}
+                      onChange={(e) => setSavingsAmount(parseInt(e.target.value) || 1000)}
+                      placeholder="Amount (sat)"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <button
+                      onClick={generateSavingsInvoice}
+                      disabled={savingsAmount <= 0 || savingsPaymentStatus === 'pending'}
+                      className="w-full px-4 py-2 bg-blue-600 rounded mb-4 disabled:bg-gray-500"
+                      title={savingsAmount <= 0 ? 'Enter an amount greater than 0' : savingsPaymentStatus === 'pending' ? 'Waiting for payment' : ''}
+                    >
+                      Generate Savings Invoice
+                    </button>
+                    {savingsLoading && (
+                      <div className="flex justify-center mt-4"></div>
+                    )}
+                    {isClient && savingsBolt11 && (
+                      <div className="text-center">
+                        <QRCodeCanvas value={savingsBolt11} size={128} className="mx-auto" />
+                        <p className="mt-2">Scan to save {savingsAmount} sats</p>
+                        <p className="mt-4 text-sm text-gray-300 break-all px-4">
+                          Payment Request: {savingsBolt11}
+                        </p>
+                        <button
+                          onClick={handleCopySavingsRequest}
+                          className="mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
+                        >
+                          {copySavingsButtonText}
+                        </button>
+                      </div>
+                    )}
+                    {savingsPaymentStatus === 'pending' && <p className="text-yellow-400 mt-2">Payment pending...</p>}
+                    {savingsPaymentStatus === 'settled' && <p className="text-green-400 mt-2">Payment received! Thank you.</p>}
+                    {savingsPaymentStatus === 'settled' && (
+                      <button
+                        onClick={resetSavings}
+                        className="w-full mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700"
+                      >
+                        Create New Savings Invoice
+                      </button>
+                    )}
+                    {savingsError && <p className="text-red-400 mt-2">{savingsError}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-6">
+          <h2
+            className="text-xl font-bold mb-4 text-center cursor-pointer"
+            onClick={() => setShowDonations(!showDonations)}
+          >
+            Donations {showDonations ? '▲' : '▼'}
+          </h2>
+          {showDonations && (
+            <>
+              <input
+                type="number"
+                value={donationAmount}
+                onChange={(e) => setDonationAmount(parseInt(e.target.value) || 1000)}
+                placeholder="Amount (sat)"
+                className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+              />
+              <button
+                onClick={generateDonationInvoice}
+                disabled={donationAmount <= 0 || paymentStatus === 'pending'}
+                className="w-full px-4 py-2 bg-blue-600 rounded mb-4 disabled:bg-gray-500"
+                title={donationAmount <= 0 ? 'Enter an amount greater than 0' : paymentStatus === 'pending' ? 'Waiting for payment' : ''}
+              >
+                Generate Donation Invoice
+              </button>
+              {loading && (
+                <div className="flex justify-center mt-4"></div>
+              )}
+              {isClient && bolt11 && (
+                <div className="text-center">
+                  <QRCodeCanvas value={bolt11} size={128} className="mx-auto" />
+                  <p className="mt-2">Scan to donate {donationAmount} sats</p>
+                  <p className="mt-4 text-sm text-gray-300 break-all px-4">
+                    Payment Request: {bolt11}
+                  </p>
+                  <button
+                    onClick={handleCopyPaymentRequest}
+                    className="mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
+                  >
+                    {copyButtonText}
+                  </button>
+              </div>
+              )}
+              {paymentStatus === 'pending' && <p className="text-yellow-400 mt-2">Payment pending...</p>}
+              {paymentStatus === 'settled' && <p className="text-green-400 mt-2">Payment received! Thank you.</p>}
+              {paymentStatus === 'settled' && (
+                <button
+                  onClick={resetDonation}
+                  className="w-full mt-2 px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700"
+                >
+                  Create New Donation
+                </button>
+              )}
+              {donationError && <p className="text-red-400 mt-2">{donationError}</p>}
+            </>
           )}
-          {donationError && <p className="text-red-400 mt-2">{donationError}</p>}
         </div>
 
         <button
