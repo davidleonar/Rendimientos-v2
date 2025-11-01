@@ -1,11 +1,16 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import '../app/globals.css';
 import { ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { auth } from '../app/lib/firebase'; // Adjust path
 import {
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, UserCredential
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  UserCredential,
+  GoogleAuthProvider,
+  signInWithPopup,
+  AuthProvider,
 } from 'firebase/auth';
 import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-firebase-hooks
 //import { text } from "stream/consumers";
@@ -139,7 +144,7 @@ export default function Home() {
       }
     };
   */
-  /* OAuth Providers
+ // OAuth Providers
   const handleOAuthLogin = async (provider: AuthProvider) => {
     try {
       const result: UserCredential = await signInWithPopup(auth, provider);
@@ -149,7 +154,7 @@ export default function Home() {
       setError(error.message);
     }
   };
-  */
+
 
   // Usage examples:
 
@@ -294,6 +299,24 @@ const handleSignOut = () => {
 
 
 
+  const resetDonation = useCallback(() => {
+    setDonationAmount(1000);
+    setBolt11(null);
+    setPaymentHash(null);
+    setPaymentStatus(null);
+    setDonationError(null);
+    setLoading(false);
+  }, []);
+
+  const resetSavings = useCallback(() => {
+    setSavingsAmount(1000);
+    setSavingsBolt11(null);
+    setSavingsPaymentHash(null);
+    setSavingsPaymentStatus(null);
+    setSavingsError(null);
+    setSavingsLoading(false);
+  }, []);
+
   /* ------------------------------------------------------------------ */
   /*  Notificaciones para el estado de la factura                       */
   /* ------------------------------------------------------------------ */
@@ -341,7 +364,7 @@ const handleSignOut = () => {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [paymentHash, paymentStatus]);
+  }, [paymentHash, paymentStatus, resetDonation]);
 
 
   /* ------------------------------------------------------------------ */
@@ -437,24 +460,6 @@ const handleSignOut = () => {
       setCopyButtonText("Copy Failed");
       setTimeout(() => setCopyButtonText("Copy Payment Request"), 2000);
       }
-  };
-
-  const resetDonation = () => {
-    setDonationAmount(1000);
-    setBolt11(null);
-    setPaymentHash(null);
-    setPaymentStatus(null);
-    setDonationError(null);
-    setLoading(false);
-  };
-
-  const resetSavings = () => {
-    setSavingsAmount(1000);
-    setSavingsBolt11(null);
-    setSavingsPaymentHash(null);
-    setSavingsPaymentStatus(null);
-    setSavingsError(null);
-    setSavingsLoading(false);
   };
 
   useEffect(() => {
@@ -652,15 +657,10 @@ const handleSignOut = () => {
               />
             )*/}
             
-            {/* OAuth Buttons  <button onClick={} className="w-full px-4 py-2 bg-black rounded text-white mb-2">
-              Iniciar con Apple
+            {/* OAuth Buttons */}
+            <button onClick={() => handleOAuthLogin(new GoogleAuthProvider())} className="w-full px-4 py-2 bg-red-500 rounded text-white mb-2">
+              Iniciar con Google
             </button>
-            <button onClick={() => handleOAuthLogin(new TwitterAuthProvider())} className="w-full px-4 py-2 bg-blue-400 rounded text-white mb-2">
-              Iniciar con Twitter
-            </button>
-            <button onClick={() => handleOAuthLogin(new OAuthProvider('microsoft.com'))} className="w-full px-4 py-2 bg-purple-600 rounded text-white">
-              Iniciar con Microsoft
-            </button>*/}
           
             
             {errorAuth && <p className="text-red-400 mt-2">{errorAuth.message} - // ← Use errorAuth</p>} 
