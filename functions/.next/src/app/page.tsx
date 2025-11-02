@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback } from "react";
 import '../app/globals.css';
 import { ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import { QRCodeCanvas } from 'qrcode.react'; 
-import { auth } from '../app/lib/firebase'; // Adjust path
+import { auth, database } from '../app/lib/firebase'; // Adjust path
+import { ref, set, serverTimestamp } from "firebase/database";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -80,7 +81,7 @@ export default function Home() {
 
   // States for savings
   const [showSavings, setShowSavings] = useState<boolean>(false);
-  const [savingsOption, setSavingsOption] = useState<'bancosColombia' | 'btcLightning' | null>(null);
+  const [savingsOption, setSavingsOption] = useState<'bancosColombia' | 'btcLightning' | 'bancosEuropa' | 'bancosUSA' | null>(null);
   const [savingsAmount, setSavingsAmount] = useState<number>(1000);
   const [savingsBolt11, setSavingsBolt11] = useState<string | null>(null);
   const [savingsPaymentStatus, setSavingsPaymentStatus] = useState<'pending' | 'settled' | null>(null);
@@ -478,6 +479,17 @@ const handleSignOut = () => {
             setSavingsPaymentStatus('settled');
             console.log('Savings settled! Amount:', invoice.amt_paid_sat, 'sats');
             alert(`¡Ahorro recibido! ${Number(invoice.amt_paid_sat)} sats`);
+
+            if (user) {
+              const savingsData = {
+                userId: user.uid,
+                amount: Number(invoice.amt_paid_sat),
+                settledAt: serverTimestamp(),
+                r_hash: savingsPaymentHash,
+              };
+              await set(ref(database, `userSavings/${user.uid}/${savingsPaymentHash}`), savingsData);
+            }
+
             setTimeout(() => {
             resetSavings();
             }, 3000);
@@ -498,7 +510,7 @@ const handleSignOut = () => {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [savingsPaymentHash, savingsPaymentStatus, resetSavings]);
+  }, [savingsPaymentHash, savingsPaymentStatus, resetSavings, user]);
 
   const generateSavingsInvoice = async () => {
     if (savingsAmount <= 0) {
@@ -513,7 +525,7 @@ const handleSignOut = () => {
       const value_msat = savingsAmount * 1000;
       const body = {
         value_msat: value_msat,
-        memo: 'Savings from App',
+        memo: `Savings from${user ? ` user ${user.displayName}` : ''}`,
         expiry: '300',
         private: false,
         add_index: 1,
@@ -604,7 +616,7 @@ const handleSignOut = () => {
         ) : user ? (
           <div className="text-center mb-4">
             <p>Bienvenido, {user.displayName || user.email}!</p>
-            <button onClick={handleSignOut} className="px-4 py-2 bg-red-600 rounded text-white hover:bg-red-700">
+            <button onClick={handleSignOut} className="px-5 py-1 bg-red-800 rounded text-white hover:bg-red-700">
               Cerrar Sesión
             </button>
           </div>
@@ -804,9 +816,8 @@ const handleSignOut = () => {
 
         {user && (
           <div className="mt-6">
-            <h2
-              className="text-xl font-bold mb-4 text-center cursor-pointer"
-              onClick={() => setShowSavings(!showSavings)}
+                      <h2
+                        className="text-lg font-bold mb-4 text-center cursor-pointer"              onClick={() => setShowSavings(!showSavings)}
             >
               Ahorra Aqui {showSavings ? '▲' : '▼'}
             </h2>
@@ -829,11 +840,49 @@ const handleSignOut = () => {
                   >
                     BTC Lightning
                   </button>
+                  <button
+                    onClick={() => setSavingsOption('bancosEuropa')}
+                    className={`px-4 py-2 rounded ${
+                      savingsOption === 'bancosEuropa' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    Bancos Europa
+                  </button>
+                  <button
+                    onClick={() => setSavingsOption('bancosUSA')}
+                    className={`px-4 py-2 rounded ${
+                      savingsOption === 'bancosUSA' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    Bancos USA
+                  </button>
                 </div>
 
                 {savingsOption === 'bancosColombia' && (
                   <div className="mt-4 text-center p-4 bg-gray-800 rounded">
                     <p className="text-lg">@3014375496</p>
+                    <p className="text-xs mt-2">Usa esta llave para realizar transferencias desde cualquier banco en Colombia. La cantidad no debe ser superior a 1.000.000 Pesos, una vez realizada la transferencia, enviar el comprobante haciendo click en &apos;Contacto&apos;. si requieres cantidades mayores, hacer click primero en &apos;Contacto&apos;</p>
+                  </div>
+                )}
+
+                {savingsOption === 'bancosEuropa' && (
+                  <div className="mt-4 text-center p-4 bg-gray-800 rounded text-xs">
+                    <p>My IBAN account details:</p>
+                    <p>Recipient name: Bridge Building</p>
+                    <p>IBAN: IE71 MODR 9903 5507 4589 16</p>
+                    <p>Bank name and address: Modulr Finance B.V., 2 Grand Canal Square Floor 6, Dublin, D02, Ireland</p>
+                  </div>
+                )}
+
+                {savingsOption === 'bancosUSA' && (
+                  <div className="mt-4 text-center p-4 bg-gray-800 rounded text-xs">
+                    <p>Recipient name: David Leonardo Paniagua Pimienta</p>
+                    <p>Recipient address: 200 North LaSalle St, Suite 2650</p>
+                    <p>Chicago, IL 60601</p>
+                    <p>Routing Number: 101019644</p>
+                    <p>Account Number: 212277376240</p>
+                    <p>Bank Name: Lead Bank</p>
+                    <p>Bank Address: 1801 Main St., Kansas City, MO 64108</p>
                   </div>
                 )}
 
@@ -893,10 +942,10 @@ const handleSignOut = () => {
 
         <div className="mt-6">
           <h2
-            className="text-xl font-bold mb-4 text-center cursor-pointer"
+            className="text-lg font-bold mb-4 text-center cursor-pointer"
             onClick={() => setShowDonations(!showDonations)}
           >
-            Donations {showDonations ? '▲' : '▼'}
+            Donaciones {showDonations ? '▲' : '▼'}
           </h2>
           {showDonations && (
             <>

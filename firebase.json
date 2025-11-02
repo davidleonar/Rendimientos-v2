@@ -1,4 +1,7 @@
 {
+  "database": {
+    "rules": "database.rules.json"
+  },
   "hosting": {
     "public": "my-spa/.next/server",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
