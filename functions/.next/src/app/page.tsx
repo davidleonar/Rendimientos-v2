@@ -18,6 +18,8 @@ import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-f
 
 import { getAuth } from 'firebase/auth';
 import { Buffer } from 'buffer';
+import ReactCountryFlag from 'react-country-flag';
+import { countries } from 'countries-list';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,6 +90,17 @@ export default function Home() {
   const [savingsError, setSavingsError] = useState<string | null>(null);
   const [savingsLoading, setSavingsLoading] = useState<boolean>(false);
   const [savingsPaymentHash, setSavingsPaymentHash] = useState<string | null>(null);
+
+  // States for withdrawals
+  const [showWithdrawals, setShowWithdrawals] = useState<boolean>(false);
+  const [withdrawalOption, setWithdrawalOption] = useState<'bancosColombia' | 'bancosInternacionales' | 'btcLightning' | 'usdtWallet' | null>(null);
+
+  // States for withdrawal form
+  const [withdrawalName, setWithdrawalName] = useState<string>('');
+  const [withdrawalId, setWithdrawalId] = useState<string>('');
+  const [withdrawalBank, setWithdrawalBank] = useState<string>('');
+  const [withdrawalBankName, setWithdrawalBankName] = useState<string>('');
+  const [withdrawalCountry, setWithdrawalCountry] = useState<string>('');
 
   // State for rendering automatico
   const [isClient, setIsClient] = useState(false);
@@ -599,6 +612,77 @@ const handleSignOut = () => {
       }
   };
 
+  const handleWithdrawalSubmit = async () => {
+    if (!user) {
+      // Handle not logged in user
+      alert('You must be logged in to make a withdrawal.');
+      return;
+    }
+
+    if (!withdrawalName || !withdrawalId || !withdrawalBank || !withdrawalBankName) {
+      // Handle form validation
+      alert('Please fill out all fields.');
+      return;
+    }
+
+    const withdrawalData = {
+      userId: user.uid,
+      name: withdrawalName,
+      id: withdrawalId,
+      bank: withdrawalBank,
+      bankName: withdrawalBankName,
+      timestamp: serverTimestamp(),
+    };
+
+    try {
+      await set(ref(database, `withdrawals/${user.uid}/${Date.now()}`), withdrawalData);
+      // Reset form fields
+      setWithdrawalName('');
+      setWithdrawalId('');
+      setWithdrawalBank('');
+      setWithdrawalBankName('');
+      alert('Withdrawal request submitted successfully!');
+    } catch (error) {
+      console.error('Error submitting withdrawal request:', error);
+      alert('Failed to submit withdrawal request.');
+    }
+  };
+
+  const handleIntWithdrawalSubmit = async () => {
+    if (!user) {
+      alert('You must be logged in to make a withdrawal.');
+      return;
+    }
+
+    if (!withdrawalName || !withdrawalId || !withdrawalBank || !withdrawalBankName || !withdrawalCountry) {
+      alert('Please fill out all fields.');
+      return;
+    }
+
+    const intWithdrawalData = {
+      userId: user.uid,
+      name: withdrawalName,
+      id: withdrawalId,
+      bank: withdrawalBank,
+      bankName: withdrawalBankName,
+      country: withdrawalCountry,
+      timestamp: serverTimestamp(),
+    };
+
+    try {
+      await set(ref(database, `IntWithdrawals/${user.uid}/${Date.now()}`), intWithdrawalData);
+      setWithdrawalName('');
+      setWithdrawalId('');
+      setWithdrawalBank('');
+      setWithdrawalBankName('');
+      setWithdrawalCountry('');
+      alert('International withdrawal request submitted successfully!');
+    } catch (error) {
+      console.error('Error submitting international withdrawal request:', error);
+      alert('Failed to submit international withdrawal request.');
+    }
+  };
+
 
 
   /*
@@ -933,6 +1017,163 @@ const handleSignOut = () => {
                       </button>
                     )}
                     {savingsError && <p className="text-red-400 mt-2">{savingsError}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {user && (
+          <div className="mt-6">
+            <h2
+              className="text-lg font-bold mb-4 text-center cursor-pointer"
+              onClick={() => setShowWithdrawals(!showWithdrawals)}
+            >
+              Retira Aqui {showWithdrawals ? '▲' : '▼'}
+            </h2>
+            {showWithdrawals && (
+              <div className="bg-gray-700 p-4 rounded shadow">
+                <div className="flex flex-col space-y-4">
+                  <button
+                    onClick={() => setWithdrawalOption('bancosColombia')}
+                    className={`px-4 py-2 rounded ${
+                      withdrawalOption === 'bancosColombia' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    Bancos Colombia
+                  </button>
+                  <button
+                    onClick={() => setWithdrawalOption('bancosInternacionales')}
+                    className={`px-4 py-2 rounded ${
+                      withdrawalOption === 'bancosInternacionales' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    Bancos Internacionales
+                  </button>
+                  <button
+                    onClick={() => setWithdrawalOption('btcLightning')}
+                    className={`px-4 py-2 rounded ${
+                      withdrawalOption === 'btcLightning' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    BTC Lightning Wallet
+                  </button>
+                  <button
+                    onClick={() => setWithdrawalOption('usdtWallet')}
+                    className={`px-4 py-2 rounded ${
+                      withdrawalOption === 'usdtWallet' ? 'bg-blue-600' : 'bg-gray-600'
+                    } text-white hover:bg-blue-700 transition-colors`}
+                  >
+                    USDT Wallet
+                  </button>
+                </div>
+                {/* Withdrawal options content will go here later */}
+                {withdrawalOption === 'bancosColombia' && (
+                  <div className="mt-4">
+                    <input
+                      type="text"
+                      value={withdrawalName}
+                      onChange={(e) => setWithdrawalName(e.target.value)}
+                      placeholder="Nombre"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <input
+                      type="text"
+                      value={withdrawalId}
+                      onChange={(e) => setWithdrawalId(e.target.value)}
+                      placeholder="Cedula"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <textarea
+                      value={withdrawalBank}
+                      onChange={(e) => setWithdrawalBank(e.target.value)}
+                      placeholder="Datos Bancarios"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                      rows={4}
+                    ></textarea>
+                    <input
+                      type="text"
+                      value={withdrawalBankName}
+                      onChange={(e) => setWithdrawalBankName(e.target.value)}
+                      placeholder="Banco"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <button
+                      onClick={handleWithdrawalSubmit}
+                      className="w-full px-4 py-2 bg-blue-600 rounded text-white"
+                    >
+                      Submit Withdrawal
+                    </button>
+                    <p className="text-xs mt-2 text-gray-400">Puedes usar tu llave o tu cuenta bancaria. Recuerda que usando la llave, el limite es de 1.000.000 Pesos.</p>
+                    <p className="text-xs mt-2 text-gray-400">0,8% comision de retiro</p>
+                  </div>
+                )}
+                {withdrawalOption === 'bancosInternacionales' && (
+                  <div className="mt-4">
+                    <input
+                      type="text"
+                      value={withdrawalName}
+                      onChange={(e) => setWithdrawalName(e.target.value)}
+                      placeholder="Nombre"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <input
+                      type="text"
+                      value={withdrawalId}
+                      onChange={(e) => setWithdrawalId(e.target.value)}
+                      placeholder="Cedula/ID"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <textarea
+                      value={withdrawalBank}
+                      onChange={(e) => setWithdrawalBank(e.target.value)}
+                      placeholder="Datos Bancarios"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                      rows={4}
+                    ></textarea>
+                    <input
+                      type="text"
+                      value={withdrawalBankName}
+                      onChange={(e) => setWithdrawalBankName(e.target.value)}
+                      placeholder="Bank Name"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <div className="flex items-center">
+                      <select
+                        value={withdrawalCountry}
+                        onChange={(e) => setWithdrawalCountry(e.target.value)}
+                        className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                      >
+                        <option value="">Select a country</option>
+                        {Object.keys(countries).map((countryCode) => {
+                          const country = countries[countryCode as keyof typeof countries];
+                          return (
+                            <option key={countryCode} value={countryCode}>
+                              {country.name}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {withdrawalCountry && (
+                        <ReactCountryFlag
+                          countryCode={withdrawalCountry}
+                          svg
+                          style={{
+                            width: '2em',
+                            height: '2em',
+                            marginLeft: '10px',
+                          }}
+                          title={withdrawalCountry}
+                        />
+                      )}
+                    </div>
+                    <button
+                      onClick={handleIntWithdrawalSubmit}
+                      className="w-full px-4 py-2 bg-blue-600 rounded text-white"
+                    >
+                      Submit International Withdrawal
+                    </button>
                   </div>
                 )}
               </div>
