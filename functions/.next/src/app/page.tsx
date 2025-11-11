@@ -121,14 +121,16 @@ export default function Home() {
 
     // Handle redirect result for OAuth
     getRedirectResult(auth).then((result) => {
-      if (result) {
-        // This is a redirect back from an OAuth provider
-        console.log('OAuth redirect result:', result.user);
-        // You can add further logic here, e.g., update user profile in your database
-      }
-    }).catch((error) => {
-      console.error('OAuth redirect error:', error);
-      setError(error.message);
+    if (result) {
+      console.log('OAuth redirect result:', result.user);
+      // Optionally force auth state refresh if needed
+      // auth.currentUser?.reload(); // Uncomment if state lags
+    } else {
+      console.log('getRedirectResult returned null - possible storage block.');
+    }
+   }).catch((error) => {
+    console.error('OAuth redirect error:', error);
+    setError(error.message || 'Failed to process redirect result.');
     });
   }, []);
 
@@ -176,14 +178,31 @@ export default function Home() {
  // OAuth Providers
    const handleOAuthLogin = async (provider: AuthProvider) => {
   try {
-    if (window.innerWidth < 768) { // Example: Mobile detection
-      await signInWithRedirect(auth, provider);
+    // Try popup first
+    await signInWithPopup(auth, provider);
+  } catch (popupErr: unknown) {  // Use 'unknown' for safety, then narrow
+    console.error('Popup error:', popupErr);
+
+    // Check if it's an error with 'code' (Firebase style)
+    if (popupErr && typeof popupErr === 'object' && 'code' in popupErr) {
+      const error = popupErr as { code: string; message?: string };  // Narrow type
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user') {
+        try {
+          await signInWithRedirect(auth, provider);
+        } catch (redirectErr: unknown) {
+          const redirectError = redirectErr as Error;  // Assume standard Error
+          console.error('Redirect fallback error:', redirectError);
+          setError(redirectError.message || 'Redirect authentication failed.');
+        }
+      } else {
+        setError(error.message || 'Popup authentication failed.');
+      }
+    } else if (popupErr instanceof Error) {
+      // Fallback for non-Firebase errors
+      setError(popupErr.message || 'Unexpected authentication error.');
     } else {
-      await signInWithPopup(auth, provider);
+      setError('Unexpected authentication error.');
     }
-  } catch (err) {
-    const error = err as Error;
-    setError(error.message);
   }
 };
 

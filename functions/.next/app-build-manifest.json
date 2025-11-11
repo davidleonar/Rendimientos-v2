@@ -13,7 +13,7 @@
       "static/chunks/255-cf2e1d3491ac955b.js",
       "static/chunks/main-app-1113374ca494f3e3.js",
       "static/css/de70bee13400563f.css",
-      "static/css/fe7226ceabcb419a.css",
+      "static/css/b30d943b1d69733f.css",
       "static/chunks/app/layout-a92d41e03a1c99ed.js"
     ],
     "/api/lndProxy/[...path]/route": [
@@ -28,11 +28,11 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-cf2e1d3491ac955b.js",
       "static/chunks/main-app-1113374ca494f3e3.js",
-      "static/css/fe7226ceabcb419a.css",
+      "static/css/b30d943b1d69733f.css",
       "static/chunks/6c609feb-f6946cb7bd2bf876.js",
       "static/chunks/dd8162e8-a22fe31e6c9390ea.js",
       "static/chunks/835-749f221a45d54407.js",
-      "static/chunks/app/page-9433ee685fadb1e6.js"
+      "static/chunks/app/page-955c0206f9a7c950.js"
     ]
   }
 }
