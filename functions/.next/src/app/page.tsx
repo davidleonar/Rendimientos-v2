@@ -104,6 +104,7 @@ export default function Home() {
   const [withdrawalBank, setWithdrawalBank] = useState<string>('');
   const [withdrawalBankName, setWithdrawalBankName] = useState<string>('');
   const [withdrawalCountry, setWithdrawalCountry] = useState<string>('');
+  const [withdrawalAmount, setWithdrawalAmount] = useState<string>('');
 
   // State for rendering automatico
   const [isClient, setIsClient] = useState(false);
@@ -656,7 +657,7 @@ const handleSignOut = () => {
       return;
     }
 
-    if (!withdrawalName || !withdrawalId || !withdrawalBank || !withdrawalBankName) {
+    if (!withdrawalName || !withdrawalId || !withdrawalBank || !withdrawalBankName || !withdrawalAmount) {
       // Handle form validation
       alert('Please fill out all fields.');
       return;
@@ -668,6 +669,7 @@ const handleSignOut = () => {
       id: withdrawalId,
       bank: withdrawalBank,
       bankName: withdrawalBankName,
+      amount: withdrawalAmount,
       timestamp: serverTimestamp(),
     };
 
@@ -678,6 +680,7 @@ const handleSignOut = () => {
       setWithdrawalId('');
       setWithdrawalBank('');
       setWithdrawalBankName('');
+      setWithdrawalAmount('');
       alert('Withdrawal request submitted successfully!');
     } catch (error) {
       console.error('Error submitting withdrawal request:', error);
@@ -691,7 +694,7 @@ const handleSignOut = () => {
       return;
     }
 
-    if (!withdrawalName || !withdrawalId || !withdrawalBank || !withdrawalBankName || !withdrawalCountry) {
+    if (!withdrawalName || !withdrawalId || !withdrawalBank || !withdrawalBankName || !withdrawalCountry || !withdrawalAmount) {
       alert('Please fill out all fields.');
       return;
     }
@@ -703,6 +706,7 @@ const handleSignOut = () => {
       bank: withdrawalBank,
       bankName: withdrawalBankName,
       country: withdrawalCountry,
+      amount: withdrawalAmount,
       timestamp: serverTimestamp(),
     };
 
@@ -713,6 +717,7 @@ const handleSignOut = () => {
       setWithdrawalBank('');
       setWithdrawalBankName('');
       setWithdrawalCountry('');
+      setWithdrawalAmount('');
       alert('International withdrawal request submitted successfully!');
     } catch (error) {
       console.error('Error submitting international withdrawal request:', error);
@@ -1125,6 +1130,13 @@ const handleSignOut = () => {
                       placeholder="Cedula"
                       className="w-full p-2 bg-gray-600 rounded text-white mb-2"
                     />
+                    <input  // <-- New field here
+                      type="number"
+                      value={withdrawalAmount}
+                      onChange={(e) => setWithdrawalAmount(e.target.value)}
+                      placeholder="Cantidad"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
                     <textarea
                       value={withdrawalBank}
                       onChange={(e) => setWithdrawalBank(e.target.value)}
@@ -1163,6 +1175,13 @@ const handleSignOut = () => {
                       value={withdrawalId}
                       onChange={(e) => setWithdrawalId(e.target.value)}
                       placeholder="Cedula/ID"
+                      className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                    />
+                    <input  // <-- New field here
+                      type="number"
+                      value={withdrawalAmount}
+                      onChange={(e) => setWithdrawalAmount(e.target.value)}
+                      placeholder="Cantidad"
                       className="w-full p-2 bg-gray-600 rounded text-white mb-2"
                     />
                     <textarea
