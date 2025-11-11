@@ -1,5 +1,5 @@
 {
-  "/api/lndProxy/[...path]/route": "app/api/lndProxy/[...path]/route.js",
   "/_not-found/page": "app/_not-found/page.js",
+  "/api/lndProxy/[...path]/route": "app/api/lndProxy/[...path]/route.js",
   "/page": "app/page.js"
 }

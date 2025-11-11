@@ -12,6 +12,9 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   AuthProvider,
+  TwitterAuthProvider,
+  signInWithRedirect,
+  getRedirectResult,
 } from 'firebase/auth';
 import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-firebase-hooks
 //import { text } from "stream/consumers";
@@ -115,6 +118,18 @@ export default function Home() {
   // Para el rendering automatico
   useEffect(() => {
     setIsClient(true); // Set to true after mounting
+
+    // Handle redirect result for OAuth
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        // This is a redirect back from an OAuth provider
+        console.log('OAuth redirect result:', result.user);
+        // You can add further logic here, e.g., update user profile in your database
+      }
+    }).catch((error) => {
+      console.error('OAuth redirect error:', error);
+      setError(error.message);
+    });
   }, []);
 
   // Sign-up/Login with Email
@@ -159,15 +174,18 @@ export default function Home() {
     };
   */
  // OAuth Providers
-  const handleOAuthLogin = async (provider: AuthProvider) => {
-    try {
-      const result: UserCredential = await signInWithPopup(auth, provider);
-      console.log('OAuth user:', result.user);
-    } catch (err) {
-      const error = err as Error;
-      setError(error.message);
+   const handleOAuthLogin = async (provider: AuthProvider) => {
+  try {
+    if (window.innerWidth < 768) { // Example: Mobile detection
+      await signInWithRedirect(auth, provider);
+    } else {
+      await signInWithPopup(auth, provider);
     }
-  };
+  } catch (err) {
+    const error = err as Error;
+    setError(error.message);
+  }
+};
 
 
   // Usage examples:
@@ -757,6 +775,9 @@ const handleSignOut = () => {
             <button onClick={() => handleOAuthLogin(new GoogleAuthProvider())} className="w-full px-4 py-2 bg-red-500 rounded text-white mb-2">
               Iniciar con Google
             </button>
+            <button onClick={() => handleOAuthLogin(new TwitterAuthProvider())} className="w-full px-4 py-2 bg-sky-500 rounded text-white mb-2">
+              Iniciar con X
+            </button>
           
             
             {errorAuth && <p className="text-red-400 mt-2">{errorAuth.message} - // ← Use errorAuth</p>} 
@@ -1174,6 +1195,7 @@ const handleSignOut = () => {
                     >
                       Submit International Withdrawal
                     </button>
+                     <p className="text-xs mt-2 text-gray-400">1% comision de retiro. 1 a 3 dias hábiles</p>
                   </div>
                 )}
               </div>
