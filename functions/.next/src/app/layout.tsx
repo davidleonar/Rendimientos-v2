@@ -28,7 +28,20 @@ export const metadata: Metadata = {
     description: 'Ahorra BTC de manera soberana',
     url: 'https://rendimientos.net/',
     siteName: 'Rendimientos App',
-    images: [{ url: 'https://rendimientos.net/AppIcon.appiconset/1024.png' }]
+    images: [
+      {
+        url: 'https://rendimientos.net/AppIcon.appiconset/1024.png', // Absolute for crawlers
+        width: 1024,
+        height: 1024,
+      },
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Rendimientos App',
+    description: 'Ahorra BTC de manera soberana',
+    images: ['https://rendimientos.net/AppIcon.appiconset/1024.png'],
   },
 
 };
