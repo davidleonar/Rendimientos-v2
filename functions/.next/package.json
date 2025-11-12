@@ -8,7 +8,8 @@
     "deploy": "cd .. && npm run build && firebase deploy",
     "deploy:functions": "cd .. && npm run build && firebase deploy --only functions",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "next": "next build"
   },
   "dependencies": {
     "@firebase/auth": "^1.11.0",
