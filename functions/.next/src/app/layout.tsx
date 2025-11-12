@@ -16,6 +16,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Rendimientos App",
   description: "Ahorra BTC de manera soberana",
+  icons: {
+    icon: '/favicon.ico', // Add this for browser tab
+    apple: [
+      { url: '/AppIcon.appiconset/180.png', sizes: '180x180' },
+      // Add others as needed
+    ],
+  },
 };
 
 export default function RootLayout({
