@@ -1,6 +1,6 @@
 {
-  "/api/lndProxy/[...path]/route": "/api/lndProxy/[...path]",
   "/icon.png/route": "/icon.png",
+  "/api/lndProxy/[...path]/route": "/api/lndProxy/[...path]",
   "/_not-found/page": "/_not-found",
   "/page": "/"
 }

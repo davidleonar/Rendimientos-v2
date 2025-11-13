@@ -71,6 +71,8 @@ export default function Home() {
   const [prevPrice, setPrevPrice] = useState<number | null>(null);
   // State for sort order in movements
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  // State to toggle email form
+  const [showEmailForm, setShowEmailForm] = useState<boolean>(false);
 
   // States for donations
   const [donationAmount, setDonationAmount] = useState<number>(1000); // Default 1000 sats
@@ -750,51 +752,6 @@ const handleSignOut = () => {
           <div className="mt-6 p-4 bg-gray-800 rounded">
             <h2 className="text-xl font-bold mb-4 text-center">Iniciar Sesión / Registrarse</h2>
             
-            {/* Email/Password */}
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)} // ← Use setEmail
-              placeholder="Email"
-              className="w-full p-2 bg-gray-600 rounded text-white mb-2"
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)} // ← Use setPassword
-              placeholder="Contraseña"
-              className="w-full p-2 bg-gray-600 rounded text-white mb-2"
-            />
-            <button onClick={handleEmailLogin} className="w-full px-4 py-2 bg-blue-600 rounded text-white mb-2">
-              Iniciar Sesión con Email
-            </button>
-            <button onClick={handleEmailSignUp} className="w-full px-4 py-2 bg-green-600 rounded text-white mb-4">
-              Registrarse con Email
-            </button>
-            
-            {/* Phone  <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)} // ← Use setPhone
-              placeholder="Número de Teléfono (e.g., +1234567890)"
-              className="w-full p-2 bg-gray-600 rounded text-white mb-2"
-            />
-            <button onClick={handlePhoneLogin} className="w-full px-4 py-2 bg-blue-600 rounded text-white mb-4">
-              Iniciar Sesión con Teléfono
-            </button>
-             */}
-           
-            {/* If SMS code prompted, add input (handle in handlePhoneLogin or separate state) */}
-            {/* verificationCode && ( // ← Conditional to show code input after SMS sent
-              <input
-                type="text"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)} // ← Use setVerificationCode
-                placeholder="Código de Verificación"
-                className="w-full p-2 bg-gray-600 rounded text-white mb-2"
-              />
-            )*/}
-            
             {/* OAuth Buttons */}
             <button onClick={() => handleOAuthLogin(new GoogleAuthProvider())} className="w-full px-4 py-2 bg-red-500 rounded text-white mb-2">
               Iniciar con Google
@@ -802,9 +759,40 @@ const handleSignOut = () => {
             <button onClick={() => handleOAuthLogin(new TwitterAuthProvider())} className="w-full px-4 py-2 bg-sky-500 rounded text-white mb-2">
               Iniciar con X
             </button>
-          
+            <a 
+              className="text-gray-400 underline cursor-pointer block text-center mt-2"
+              onClick={() => setShowEmailForm(!showEmailForm)}
+            >
+              Email
+            </a>
             
-            {errorAuth && <p className="text-red-400 mt-2">{errorAuth.message} - // ← Use errorAuth</p>} 
+            {showEmailForm && (
+              <>
+                {/* Email/Password */}
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  className="w-full p-2 bg-gray-600 rounded text-white mb-2 mt-4"
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Contraseña"
+                  className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                />
+                <button onClick={handleEmailLogin} className="w-full px-4 py-2 bg-blue-600 rounded text-white mb-2">
+                  Iniciar Sesión con Email
+                </button>
+                <button onClick={handleEmailSignUp} className="w-full px-4 py-2 bg-green-600 rounded text-white mb-4">
+                  Registrarse con Email
+                </button>
+              </>
+            )}
+          
+            {errorAuth && <p className="text-red-400 mt-2">{errorAuth.message}</p>} 
           </div>
         )}
         {/* Add reCAPTCHA container (hidden) */}
@@ -821,126 +809,130 @@ const handleSignOut = () => {
             </div>
           )}
 
-        <h1 className="text-2xl font-bold mb-4 text-center">Saldos de Cuenta</h1>
-        <form onSubmit={handleSubmit} className="flex items-center space-x-2 mb-4">
-          <input
-            type="text"
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-            placeholder="Enter ID"
-            className="w-full p-2 bg-gray-600 rounded text-white border border-gray-500 focus:outline-none focus:border-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-green-600 rounded text-white hover:bg-green-700 disabled:bg-gray-500 transition-colors"
-          >
-            {loading ? "Cargando..." : "Obtener Datos"}
-          </button>
-        </form>
+        {user && (
+          <>
+            <h1 className="text-2xl font-bold mb-4 text-center">Saldos de Cuenta</h1>
+            <form onSubmit={handleSubmit} className="flex items-center space-x-2 mb-4">
+              <input
+                type="text"
+                value={id}
+                onChange={(e) => setId(e.target.value)}
+                placeholder="Enter ID"
+                className="w-full p-2 bg-gray-600 rounded text-white border border-gray-500 focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 bg-green-600 rounded text-white hover:bg-green-700 disabled:bg-gray-500 transition-colors"
+              >
+                {loading ? "Cargando..." : "Obtener Datos"}
+              </button>
+            </form>
 
-        {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
+            {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
 
-        {data.length > 0 ? (
-          <div>
-            {data.map((item, index) => (
-              <div key={index} className="bg-gray-700 p-4 rounded shadow mb-4">
-                <h2 className="text-xl font-bold mb-2 text-center">
-                  {item.name} {item.lastname}
-                </h2>
-                <div className="flex justify-between">
-                  <span className="font-semibold text-gray-300">BTC Balance:</span>
-                  <span className="text-green-400">{item.BTCbalance} BTC</span>
+            {data.length > 0 ? (
+              <div>
+                {data.map((item, index) => (
+                  <div key={index} className="bg-gray-700 p-4 rounded shadow mb-4">
+                    <h2 className="text-xl font-bold mb-2 text-center">
+                      {item.name} {item.lastname}
+                    </h2>
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-gray-300">BTC Balance:</span>
+                      <span className="text-green-400">{item.BTCbalance} BTC</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-gray-300">Saldo (Pesos):</span>
+                      <span className="text-green-400">{item.COPbalance} COP</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-gray-300">Rendimiento:</span>
+                      <span className="text-green-400">{item.Rendimiento}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-gray-300">Precio Promedio Compra:</span>
+                      <span className="text-green-400">{item.AvgCompra}</span>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={handleMovementsClick}
+                  disabled={loading}
+                  className="w-full mt-4 px-4 py-2 bg-blue-600 rounded text-white hover:bg-blue-700 disabled:bg-gray-500 transition-colors"
+                >
+                  {loading ? "Cargando..." : "Mostrar Movimientos"}
+                </button>
+              </div>
+            ) : (
+              !loading && (
+                <p className="text-gray-400 text-center">
+                  No balances found. Enter an ID to fetch.
+                </p>
+              )
+            )}
+
+            {movements.length > 0 && (
+              <div className="mt-6">
+                <div className="flex items-center justify-center mb-4">
+                  <h2 className="text-xl font-bold">Movimientos</h2>
+                  <button
+                    onClick={handleSortByDate}
+                    className="ml-2 text-gray-400 hover:text-white focus:outline-none"
+                    title={`Ordenar por fecha (${sortOrder === 'asc' ? 'ascendente' : 'descendente'})`}
+                  >
+                    <ArrowsUpDownIcon className="w-5 h-5" />
+                  </button>
                 </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold text-gray-300">Saldo (Pesos):</span>
-                  <span className="text-green-400">{item.COPbalance} COP</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold text-gray-300">Rendimiento:</span>
-                  <span className="text-green-400">{item.Rendimiento}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold text-gray-300">Precio Promedio Compra:</span>
-                  <span className="text-green-400">{item.AvgCompra}</span>
+                <div className="space-y-4">
+                  {movements.map((item, index) => (
+                    <div key={index} className="bg-gray-700 p-4 rounded shadow">
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-gray-300">Fecha:</span>
+                        <span>{item.Fecha}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-gray-300">Saldo COP:</span>
+                        <span className="text-gray-300">{item['Saldo COP']}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-gray-300">Precio BTC:</span>
+                        <span className="text-gray-300">{item['Precio BTC']}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-gray-300">Precio Dolar:</span>
+                        <span className="text-gray-300">{item['Precio Dolar']}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-gray-300">Total BTC:</span>
+                        <span className="text-gray-300">{item.Total}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-gray-300">Operación:</span>
+                        <span
+                          className={
+                            item.Operacion === 'Compra'
+                              ? 'text-green-400'
+                              : item.Operacion === 'Venta'
+                              ? 'text-red-400'
+                              : 'text-gray-300'
+                          }
+                        >
+                          {item.Operacion}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-            <button
-              onClick={handleMovementsClick}
-              disabled={loading}
-              className="w-full mt-4 px-4 py-2 bg-blue-600 rounded text-white hover:bg-blue-700 disabled:bg-gray-500 transition-colors"
-            >
-              {loading ? "Cargando..." : "Mostrar Movimientos"}
-            </button>
-          </div>
-        ) : (
-          !loading && (
-            <p className="text-gray-400 text-center">
-              No balances found. Enter an ID to fetch.
-            </p>
-          )
-        )}
+            )}
 
-        {movements.length > 0 && (
-          <div className="mt-6">
-            <div className="flex items-center justify-center mb-4">
-              <h2 className="text-xl font-bold">Movimientos</h2>
-              <button
-                onClick={handleSortByDate}
-                className="ml-2 text-gray-400 hover:text-white focus:outline-none"
-                title={`Ordenar por fecha (${sortOrder === 'asc' ? 'ascendente' : 'descendente'})`}
-              >
-                <ArrowsUpDownIcon className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              {movements.map((item, index) => (
-                <div key={index} className="bg-gray-700 p-4 rounded shadow">
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-300">Fecha:</span>
-                    <span>{item.Fecha}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-300">Saldo COP:</span>
-                    <span className="text-gray-300">{item['Saldo COP']}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-300">Precio BTC:</span>
-                    <span className="text-gray-300">{item['Precio BTC']}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-300">Precio Dolar:</span>
-                    <span className="text-gray-300">{item['Precio Dolar']}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-300">Total BTC:</span>
-                    <span className="text-gray-300">{item.Total}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-300">Operación:</span>
-                    <span
-                      className={
-                        item.Operacion === 'Compra'
-                          ? 'text-green-400'
-                          : item.Operacion === 'Venta'
-                          ? 'text-red-400'
-                          : 'text-gray-300'
-                      }
-                    >
-                      {item.Operacion}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {loading && (
-          <div className="flex justify-center mt-4">
-            <div className="w-8 h-8 border-4 border-t-blue-500 border-gray-300 rounded-full animate-spin"></div>
-          </div>
+            {loading && (
+              <div className="flex justify-center mt-4">
+                <div className="w-8 h-8 border-4 border-t-blue-500 border-gray-300 rounded-full animate-spin"></div>
+              </div>
+            )}
+          </>
         )}
 
         {user && (
