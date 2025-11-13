@@ -163,8 +163,9 @@ export default function Home() {
 
   const actionCodeSettings = {
     url: `${'https://rendimientos.net'}/`,  // Redirect back to this page after clicking the link
-    handleCodeInApp: true,              // Handle the link in the app (not Firebase console)
-    // Optional: iOS/Android bundle IDs if supporting mobile
+    handleCodeInApp: true,                  // Handle the link in the app (not Firebase console)
+    LinkDomain: 'rendimientos.net'                  
+                                            // Optional: iOS/Android bundle IDs if supporting mobile
   };
 
   const handleSendEmailLink = async () => {
@@ -175,6 +176,7 @@ export default function Home() {
     try {
       await sendSignInLinkToEmail(auth, linkEmail, actionCodeSettings);
       window.localStorage.setItem('emailForSignIn', linkEmail); // Store email locally for verification later
+      
       setEmailLinkSent(true);
       setEmailLinkError(null);
       console.log('Email link sent successfully.');
