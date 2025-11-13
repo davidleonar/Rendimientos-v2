@@ -6,15 +6,15 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { auth, database } from '../app/lib/firebase'; // Adjust path
 import { ref, set, serverTimestamp } from "firebase/database";
 import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  UserCredential,
   GoogleAuthProvider,
   signInWithPopup,
   AuthProvider,
   TwitterAuthProvider,
   signInWithRedirect,
   getRedirectResult,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
 } from 'firebase/auth';
 import { useAuthState } from 'react-firebase-hooks/auth'; // npm install react-firebase-hooks
 //import { text } from "stream/consumers";
@@ -113,8 +113,9 @@ export default function Home() {
 
   //States para login
   const [user, loadingAuth, errorAuth] = useAuthState(auth);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [linkEmail, setLinkEmail] = useState(''); // Separate state for email link to avoid conflict
+  const [emailLinkSent, setEmailLinkSent] = useState(false);
+  const [emailLinkError, setEmailLinkError] = useState<string | null>(null);
   //const [phone, setPhone] = useState('');
   //const [verificationCode, setVerificationCode] = useState(''); // ← Now used in phone confirmation
 
@@ -135,28 +136,52 @@ export default function Home() {
     console.error('OAuth redirect error:', error);
     setError(error.message || 'Failed to process redirect result.');
     });
+
+    // Handle email link sign-in
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+    let storedEmail = window.localStorage.getItem('emailForSignIn');
+    if (!storedEmail) {
+      // Prompt for email if not stored (fallback for cross-device)
+      storedEmail = window.prompt('Please provide your email for confirmation');
+    }
+    if (storedEmail) {
+      signInWithEmailLink(auth, storedEmail, window.location.href)
+        .then((result) => {
+          console.log('Signed in with email link:', result.user);
+          window.localStorage.removeItem('emailForSignIn'); // Clean up
+          // Optionally: Redirect or refresh data
+          window.location.href = '/'; // Reload to update auth state
+        })
+        .catch((err) => {
+          const error = err as Error;
+          setEmailLinkError(error.message);
+          console.error('Error signing in with email link:', error);
+        });
+    }
+  }
   }, []);
 
-  // Sign-up/Login with Email
-  const handleEmailSignUp = async () => {
-    try {
-      const userCredential: UserCredential = await createUserWithEmailAndPassword(auth, email, password);
-      console.log('User created:', userCredential.user);
-      setError(null); // Clear previous errors on success
-    } catch (err) {
-      const error = err as Error; // Cast to Error
-      setError(error.message);
-    }
+  const actionCodeSettings = {
+    url: `${'https://rendimientos.net'}/`,  // Redirect back to this page after clicking the link
+    handleCodeInApp: true,              // Handle the link in the app (not Firebase console)
+    // Optional: iOS/Android bundle IDs if supporting mobile
   };
 
-  const handleEmailLogin = async () => {
+  const handleSendEmailLink = async () => {
+    if (!linkEmail) {
+      setEmailLinkError('Please enter an email.');
+      return;
+    }
     try {
-      const userCredential: UserCredential = await signInWithEmailAndPassword(auth, email, password);
-      console.log('Logged in:', userCredential.user);
-      setError(null); // Clear previous errors on success
+      await sendSignInLinkToEmail(auth, linkEmail, actionCodeSettings);
+      window.localStorage.setItem('emailForSignIn', linkEmail); // Store email locally for verification later
+      setEmailLinkSent(true);
+      setEmailLinkError(null);
+      console.log('Email link sent successfully.');
     } catch (err) {
       const error = err as Error;
-      setError(error.message);
+      setEmailLinkError(error.message);
+      console.error('Error sending email link:', error);
     }
   };
   /*
@@ -763,32 +788,31 @@ const handleSignOut = () => {
               className="text-gray-400 underline cursor-pointer block text-center mt-2"
               onClick={() => setShowEmailForm(!showEmailForm)}
             >
-              Email
+              Iniciar Sesión con Email
             </a>
             
             {showEmailForm && (
               <>
-                {/* Email/Password */}
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                  className="w-full p-2 bg-gray-600 rounded text-white mb-2 mt-4"
-                />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Contraseña"
-                  className="w-full p-2 bg-gray-600 rounded text-white mb-2"
-                />
-                <button onClick={handleEmailLogin} className="w-full px-4 py-2 bg-blue-600 rounded text-white mb-2">
-                  Iniciar Sesión con Email
-                </button>
-                <button onClick={handleEmailSignUp} className="w-full px-4 py-2 bg-green-600 rounded text-white mb-4">
-                  Registrarse con Email
-                </button>
+                
+                {/* New Email Link Section */}
+                <div className="mt-4">
+                  <h3 className="text-md font-semibold mb-2">Ingresa tu Email</h3>
+                  <input
+                    type="email"
+                    value={linkEmail}
+                    onChange={(e) => setLinkEmail(e.target.value)}
+                    placeholder="Ingresa tu email para el enlace mágico"
+                    className="w-full p-2 bg-gray-600 rounded text-white mb-2"
+                  />
+                  <button
+                    onClick={handleSendEmailLink}
+                    className="w-full px-2 py-2 bg-purple-800 rounded text-white mb-6 text-sm"
+                  >
+                    Enviar link de Ingreso
+                  </button>
+                  {emailLinkSent && <p className="text-green-400">¡Link enviado! Revisa tu correo.</p>}
+                  {emailLinkError && <p className="text-red-800">{emailLinkError}</p>}
+                </div>
               </>
             )}
           
