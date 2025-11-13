@@ -23,6 +23,7 @@ import { getAuth } from 'firebase/auth';
 import { Buffer } from 'buffer';
 import ReactCountryFlag from 'react-country-flag';
 import { countries } from 'countries-list';
+import Image from 'next/image';
 
 export const dynamic = 'force-dynamic';
 
@@ -777,6 +778,14 @@ const handleSignOut = () => {
           </div>
         ) : (
           <div className="mt-6 p-4 bg-gray-800 rounded">
+            <Image
+              src="/pig.png"  // Replace with your actual image filename (e.g., /my-image.jpg)
+              alt="Login Header Image"
+              width={1520}
+              height={1850}
+              className="w-full h-auto rounded-lg mb-4"  // Responsive: full width, auto height, with margin below
+              priority  // Optional: Prioritize loading if it's critical
+            />
             <h2 className="text-xl font-bold mb-4 text-center">Iniciar Sesión / Registrarse</h2>
             
             {/* OAuth Buttons */}
