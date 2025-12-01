@@ -17,8 +17,18 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const url = require('url');
-const {onRequest} = require("firebase-functions/v2/https"); //para tomar conf de firebase
-const {defineString} = require("firebase-functions/params"); //para tomar la conf de firebase
+
+const { defineString, defineSecret } = require('firebase-functions/params');
+const { https: { onRequest } } = require('firebase-functions/v2');
+
+// Define params (non-sensitive)
+const polygonRpcUrl = defineString('POLYGON_RPC_URL');
+const usdtContractAddress = defineString('USDT_CONTRACT_ADDRESS');
+const polygonAppWalletAddress = defineString('POLYGON_APP_WALLET_ADDRESS');
+
+// Define secret (sensitive)
+const polygonAppPrivateKey = defineSecret('POLYGON_APP_PRIVATE_KEY');
+
 const next = require('next');
 const path = require('path');
 const admin = require('firebase-admin');
