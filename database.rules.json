@@ -22,6 +22,16 @@
         ".read": "auth != null && $uid === auth.uid",  
         ".write": "auth != null && $uid === auth.uid"
       }
+    },
+
+    "userSavings": {
+      "$uid": {
+        ".read": "auth != null && $uid === auth.uid",
+        "$txHash": {
+          ".write": "!data.exists() && newData.child('userId').val() === $uid",
+          ".validate": "newData.hasChildren(['userId', 'amount', 'txHash', 'timestamp', 'network'])"
+       }
+      }
     }
   }
 }
