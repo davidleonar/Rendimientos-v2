@@ -27,25 +27,19 @@ const usdtContractAddress = defineString('USDT_CONTRACT_ADDRESS');
 const polygonAppWalletAddress = defineString('POLYGON_APP_WALLET_ADDRESS');
 
 // Define secret (sensitive)
-const polygonAppPrivateKey = defineSecret('POLYGON_APP_PRIVATE_KEY');
+//const polygonAppPrivateKey = defineSecret('POLYGON_APP_PRIVATE_KEY');
 
 const next = require('next');
 const path = require('path');
 const admin = require('firebase-admin');
 
-const lndUrl = 'http://35.208.122.165:3000'; // e.g., IP publica de la VM Proxy 35.208.122.165
-const macaroon = '0201036c6e6402f801030a1082f4cadbd734d464054914485e044e381201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620795ab76b30a6d0856ea98a0ecb45673b0e40458caaab2158a2f2cafbd9a31913';
+//mainMacaroons
+const lndUrl = defineString('LND_URL'); 
+const mainMacaroon = defineSecret('MAIN_LND_MACAROON');  // Main admin.mainMacaroon
+const edgeMacaroon = defineSecret('EDGE_TAPD_MACAROON');  // Edge admin.mainMacaroon
+const adminUid = defineString('ADMIN_UID');  // Your UID
 
-/*
-// Load LND TLS cert (must be in functions folder)
-const tlsCert = fs.readFileSync('./tls.cert'); // ← tls.cert in same dir
 
-// Create HTTPS agent that trusts your LND cert
-const agent = new https.Agent({
-  ca: tlsCert,
-  rejectUnauthorized: false, // Enforce cert
-});
-*/
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -323,7 +317,7 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 //process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 // LND proxy para conectar con el Nodo Umbrel
-exports.lndProxy = functions.https.onRequest((req, res) => {
+exports.lndProxy = functions.https.onRequest({secrets: [mainMacaroon]}, (req, res) => {
   cors(req, res, async () => {
     //if (!(await verifyToken(req, res))) return;
 
@@ -380,12 +374,12 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
 
       // 4. Forward to LND
 
-      const lndUrlFinal = `${lndUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+      const lndUrlFinal = `${lndUrl.value()}${path.startsWith('/') ? '' : '/'}${path}`;
       console.log('Fetching LND:', lndUrlFinal);
       const lndResponse = await fetch(lndUrlFinal, {
         method: req.method,
         headers: {
-          'Grpc-Metadata-macaroon': macaroon,
+          'Grpc-Metadata-macaroon': mainMacaroon.value(),
           'Content-Type': 'application/json',
         },
         body: body ? JSON.stringify(body) : undefined,
@@ -428,6 +422,100 @@ exports.lndProxy = functions.https.onRequest((req, res) => {
       }
 
       // Generic fallback
+      res.status(500).json({
+        error: 'Internal proxy error',
+        details: err.message,
+      });
+    }
+  });
+});
+
+exports.tapdProxy = functions.https.onRequest({secrets: [edgeMacaroon]}, (req, res) => {
+  cors(req, res, async () => {
+
+    console.log('tapdProxy request:', {
+      method: req.method,
+      path: req.query.path,
+      xForwardedUrl: req.headers['x-forwarded-url'],
+      headers: req.headers,
+      body: req.body,
+    });
+
+    //if (!(await verifyAdmin(req, res))) return;
+    
+    try {
+
+      // Use x-forwarded-url as fallback if path is undefined
+      let path = req.query.path;
+      if (!path || typeof path !== 'string') {
+        const forwardedUrl = req.headers['x-forwarded-url'];
+        if (forwardedUrl && typeof forwardedUrl === 'string') {
+          const url = new URL(`http://dummy${forwardedUrl}`); // Parse as URL
+          path = url.pathname.replace(/^\/api\/tapdProxy/, ''); // Strip /api/tapdProxy prefix
+        }
+        if (!path) {
+          return res.status(400).json({
+            error: 'Missing or invalid "path" query parameter',
+            example: '?path=/v1/taproot-assets',
+          });
+        }
+      }
+
+      // Validate method
+      if (!['GET', 'POST', 'DELETE'].includes(req.method)) {
+        return res.status(405).json({ error: 'Method not allowed. Use GET, POST, or DELETE.' });
+      }
+
+      // 3. Parse JSON body (only for POST)
+      let body = undefined;
+      if (req.method === 'POST') {
+        if (!req.is('json')) {
+          return res.status(400).json({ error: 'Content-Type must be application/json' });
+        }
+        body = req.body;
+        if (!body || typeof body !== 'object') {
+          return res.status(400).json({ error: 'Invalid JSON body' });
+        }
+      }
+
+      //Forward to TAPD
+      const lndUrlFinal = `${lndUrl.value()}${path.startsWith('/') ? '' : '/'}${path}`;
+      console.log('Fetching TAPD:', lndUrlFinal);
+
+      const tapdResponse = await fetch(lndUrlFinal, {
+        method: req.method,
+        headers: {
+          'Grpc-Metadata-macaroon': edgeMacaroon.value(),
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        //agent,
+        timeout: 10000, // 10s timeout
+      }).catch(err => {
+        console.error('Fetch error:', err);
+        throw err; // Re-throw to catch block
+      });;
+
+      //Read response
+      let tapdData;
+      const contentType = tapdResponse.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        tapdData = await tapdResponse.json();
+      } else {
+        const text = await tapdResponse.text();
+        console.error('TAPD non-JSON response:', text);
+        return res.status(502).json({
+          error: 'Invalid response from TAPD',
+          details: text.substring(0, 200),
+        });
+      }
+
+      //Forward success
+      console.log('tapdData Response:', tapdData);
+      res.status(tapdResponse.status).json(tapdData);
+
+    } catch (err) {
+      console.error('tapdProxy error:', err);
       res.status(500).json({
         error: 'Internal proxy error',
         details: err.message,

@@ -26,6 +26,14 @@
         "nxtPpath": "nxtPpath"
       },
       "namedRegex": "^/api/lndProxy/(?<nxtPpath>.+?)(?:/)?$"
+    },
+    {
+      "page": "/api/tapdProxy/[...path]",
+      "regex": "^/api/tapdProxy/(.+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPpath": "nxtPpath"
+      },
+      "namedRegex": "^/api/tapdProxy/(?<nxtPpath>.+?)(?:/)?$"
     }
   ],
   "staticRoutes": [

@@ -1,7 +1,8 @@
 {
-  "/_not-found/page": "/_not-found",
   "/api/lndProxy/[...path]/route": "/api/lndProxy/[...path]",
-  "/api/recordUsdtTronDeposit/route": "/api/recordUsdtTronDeposit",
+  "/api/tapdProxy/[...path]/route": "/api/tapdProxy/[...path]",
   "/icon.png/route": "/icon.png",
+  "/_not-found/page": "/_not-found",
+  "/api/recordUsdtTronDeposit/route": "/api/recordUsdtTronDeposit",
   "/page": "/"
 }
