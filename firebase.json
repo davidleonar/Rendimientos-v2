@@ -13,9 +13,33 @@
       {
         "source": "**",
         "function": "nextServer"
+      },
+      {
+        "source": "/api/tapdProxy/**",
+        "destination": "tapdProxy"
       }
     ],
-    "cleanUrls": true
+    "cleanUrls": true,
+    "headers": [
+      {
+        "source": "/faavicon.ico",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/(.*).css",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800, immutable"
+          }
+        ]
+      }
+    ]
   },
   "functions": [
     {
