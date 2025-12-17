@@ -1,18 +1,9 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
-
 const functions = require('firebase-functions');
 const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getDatabase } = require('firebase-admin/database');
-const cors = require('cors')({ origin: true }); // Enable CORS for all origins
+const cors = require('cors')({ origin: true }); 
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -50,12 +41,7 @@ initializeApp({
 // Middleware to verify token
 async function verifyToken(req, res) {
   const authHeader = req.headers.authorization;
-  console.log('verifyToken request:', {
-      method: req.method,
-      path: req.query.path,
-      headers: req.headers,
-      body: req.body,
-    });
+  
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     res.status(401).send('Unauthorized: No token provided.');
     return false; // Indicate failure
@@ -64,6 +50,7 @@ async function verifyToken(req, res) {
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
     req.user = decoded; // Attach user to req
+    console.log('Token verified for user:', decoded.uid);
     return true;
   } catch (err) {
     res.status(401).send('Unauthorized: Invalid token.');
@@ -105,8 +92,17 @@ async function fetchAllSpreadsheetData(spreadsheetId, range) {
   }
 }
 
-exports.syncSheetsToRTDB = functions.https.onRequest(async (req, res) => {
-  console.log('syncSheetsToRTDB function started.');
+exports.syncSheetsToRTDB = functions.https.onRequest((req, res) => {
+  cors(req, res, async () => {
+    // Verify token (auth required)
+    if (!(await verifyToken(req, res))) return;
+
+    // Check if user is admin
+    if (req.user.uid !== adminUid.value()) {
+      return res.status(403).send('Forbidden: Admin access required.');
+    }
+
+    console.log('syncSheetsToRTDB function started.');
   try {
     // 1. Fetch Balances
     console.log('Fetching balances data...');
@@ -149,13 +145,14 @@ exports.syncSheetsToRTDB = functions.https.onRequest(async (req, res) => {
     await rtdb.ref().set(rtdbData);
     console.log('Data successfully written to Realtime Database.');
 
-    res.status(200).send('Successfully synced spreadsheet data to Realtime Database.');
+    res.status(200).json({ message: 'Successfully synced spreadsheet data to Realtime Database.' });
     console.log('syncSheetsToRTDB function finished successfully.');
   } catch (error) {
     console.error('Error syncing data to RTDB:', error);
-    res.status(500).send('Internal Server Error');
+    res.status(500).json({ error: 'Internal Server Error' });
     console.log('syncSheetsToRTDB function finished with error.');
   }
+});
 });
 
 // Google Sheets configuration
@@ -441,7 +438,7 @@ exports.tapdProxy = functions.https.onRequest({secrets: [edgeMacaroon]}, (req, r
       body: req.body,
     });
 
-    //if (!(await verifyAdmin(req, res))) return;
+    if (!(await verifyToken(req, res))) return;
     
     try {
 
