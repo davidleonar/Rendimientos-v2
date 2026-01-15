@@ -2,34 +2,33 @@
   "rules": {
     ".read": false,
     ".write": false,
-    
+
     "balances": {
       "$id": {
-        ".read": "auth != null && ($id === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
-        ".write": false
+      ".read": "auth != null && ($id === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
+      ".write": false
       }
     },
-    
+
     "withdrawals": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
         ".write": "auth != null && $uid === auth.uid"
-      }
-    },
+        }
+      },
 
     "IntWithdrawals": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
         ".write": "auth != null && $uid === auth.uid"
-      }
-    },
+        }
+      },
 
     "userSavings": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
-        "$txHash": {
-          ".write": "!data.exists() && newData.child('userId').val() === $uid",
-          ".validate": "newData.hasChildren(['userId', 'amount', 'txHash', 'timestamp', 'network'])"
+      "$txHash": {
+        ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.child('userId').val() === $uid",
         }
       }
     }

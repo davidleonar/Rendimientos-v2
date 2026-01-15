@@ -142,7 +142,7 @@ exports.syncSheetsToRTDB = functions.https.onRequest((req, res) => {
 
     // 4. Write to Realtime Database
     console.log('Writing data to Realtime Database...');
-    await rtdb.ref().set(rtdbData);
+    await rtdb.ref('balances').set(rtdbData.balances);    // se puede cambiar a update() si no se quiere sobreescribir todo y solo actualizar
     console.log('Data successfully written to Realtime Database.');
 
     res.status(200).json({ message: 'Successfully synced spreadsheet data to Realtime Database.' });
