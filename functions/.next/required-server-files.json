@@ -1,19 +1,10 @@
 {
   "version": 1,
   "config": {
-    "env": {
-      "NEXT_PUBLIC_FIREBASE_API_KEY": "AIzaSyBk_fTMgmkwZGoW154ntCxxXwiDMy5o7KA",
-      "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN": "rendimientos-5dbb9.firebaseapp.com",
-      "NEXT_PUBLIC_FIREBASE_DB_URL": "https://rendimientos-5dbb9-default-rtdb.firebaseio.com",
-      "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "rendimientos-5dbb9",
-      "NEXT_PUBLIC_FIREBASE_STRG_BUCKET": "rendimientos-5dbb9.firebasestorage.app",
-      "NEXT_PUBLIC_FIREBASE_MSID": "698366956468",
-      "NEXT_PUBLIC_FIREBASE_APP_ID": "1:698366956468:web:18ae8758f5f3c4fe5dd8e1",
-      "NEXT_PUBLIC_FIREBASE_MSM_ID": "G-Y5QKXN0N6C"
-    },
+    "env": {},
     "webpack": null,
     "eslint": {
-      "ignoreDuringBuilds": false
+      "ignoreDuringBuilds": true
     },
     "typescript": {
       "ignoreBuildErrors": false,
@@ -24,7 +15,7 @@
     "cleanDistDir": true,
     "assetPrefix": "",
     "cacheMaxMemorySize": 52428800,
-    "configOrigin": "next.config.ts",
+    "configOrigin": "next.config.js",
     "useFileSystemPublicRoutes": true,
     "generateEtags": true,
     "pageExtensions": [
@@ -107,7 +98,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "/Users/davidpaniagua/Documents/my-project/my-spa",
+    "outputFileTracingRoot": "/Users/davidpaniagua",
     "experimental": {
       "useSkewCookie": false,
       "cacheLife": {
@@ -295,13 +286,13 @@
     },
     "htmlLimitedBots": "[\\w-]+-Google|Google-[\\w-]+|Chrome-Lighthouse|Slurp|DuckDuckBot|baiduspider|yandex|sogou|bitlybot|tumblr|vkShare|quora link preview|redditbot|ia_archiver|Bingbot|BingPreview|applebot|facebookexternalhit|facebookcatalog|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|SkypeUriPreview|Yeti|googleweblight",
     "bundlePagesRouterDependencies": false,
-    "configFileName": "next.config.ts",
+    "configFileName": "next.config.js",
     "turbopack": {
-      "root": "/Users/davidpaniagua/Documents/my-project/my-spa"
+      "root": "/Users/davidpaniagua"
     }
   },
   "appDir": "/Users/davidpaniagua/Documents/my-project/my-spa",
-  "relativeAppDir": "",
+  "relativeAppDir": "Documents/my-project/my-spa",
   "files": [
     ".next/routes-manifest.json",
     ".next/server/pages-manifest.json",
