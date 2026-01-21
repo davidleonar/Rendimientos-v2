@@ -7,21 +7,12 @@
       "static/chunks/main-app-1113374ca494f3e3.js",
       "static/chunks/app/_not-found/page-56cb97e2702027d3.js"
     ],
-    "/layout": [
+    "/api/recordUsdtTronDeposit/route": [
       "static/chunks/webpack-6a4065611655be22.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-cb395327542b56ef.js",
       "static/chunks/main-app-1113374ca494f3e3.js",
-      "static/css/de70bee13400563f.css",
-      "static/css/426bdc791f312c64.css",
-      "static/chunks/app/layout-a92d41e03a1c99ed.js"
-    ],
-    "/api/tapdProxy/[...path]/route": [
-      "static/chunks/webpack-6a4065611655be22.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-cb395327542b56ef.js",
-      "static/chunks/main-app-1113374ca494f3e3.js",
-      "static/chunks/app/api/tapdProxy/[...path]/route-a8a24c34ab6bbb48.js"
+      "static/chunks/app/api/recordUsdtTronDeposit/route-a8a24c34ab6bbb48.js"
     ],
     "/api/lndProxy/[...path]/route": [
       "static/chunks/webpack-6a4065611655be22.js",
@@ -30,12 +21,21 @@
       "static/chunks/main-app-1113374ca494f3e3.js",
       "static/chunks/app/api/lndProxy/[...path]/route-a8a24c34ab6bbb48.js"
     ],
-    "/api/recordUsdtTronDeposit/route": [
+    "/api/tapdProxy/[...path]/route": [
       "static/chunks/webpack-6a4065611655be22.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-cb395327542b56ef.js",
       "static/chunks/main-app-1113374ca494f3e3.js",
-      "static/chunks/app/api/recordUsdtTronDeposit/route-a8a24c34ab6bbb48.js"
+      "static/chunks/app/api/tapdProxy/[...path]/route-a8a24c34ab6bbb48.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack-6a4065611655be22.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-cb395327542b56ef.js",
+      "static/chunks/main-app-1113374ca494f3e3.js",
+      "static/css/de70bee13400563f.css",
+      "static/css/426bdc791f312c64.css",
+      "static/chunks/app/layout-a92d41e03a1c99ed.js"
     ],
     "/page": [
       "static/chunks/webpack-6a4065611655be22.js",
@@ -47,7 +47,7 @@
       "static/chunks/aea36d77-1cfffb5367ee59bb.js",
       "static/chunks/dd8162e8-30fcc20471941381.js",
       "static/chunks/717-47aa2d25e9baec93.js",
-      "static/chunks/app/page-46cac31a5d52ff72.js"
+      "static/chunks/app/page-898836e792a420f9.js"
     ]
   }
 }
