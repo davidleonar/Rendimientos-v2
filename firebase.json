@@ -22,7 +22,7 @@
     "cleanUrls": true,
     "headers": [
       {
-        "source": "/faavicon.ico",
+        "source": "/favicon.ico",
         "headers": [
           {
             "key": "Cache-Control",
