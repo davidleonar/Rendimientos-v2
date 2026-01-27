@@ -12,14 +12,6 @@ const url = require('url');
 const { defineString, defineSecret } = require('firebase-functions/params');
 const { https: { onRequest } } = require('firebase-functions/v2');
 
-// Define params (non-sensitive)
-const polygonRpcUrl = defineString('POLYGON_RPC_URL');
-const usdtContractAddress = defineString('USDT_CONTRACT_ADDRESS');
-const polygonAppWalletAddress = defineString('POLYGON_APP_WALLET_ADDRESS');
-
-// Define secret (sensitive)
-//const polygonAppPrivateKey = defineSecret('POLYGON_APP_PRIVATE_KEY');
-
 const next = require('next');
 const path = require('path');
 const admin = require('firebase-admin');
@@ -29,7 +21,6 @@ const lndUrl = defineString('LND_URL');
 const mainMacaroon = defineSecret('MAIN_LND_MACAROON');  // Main admin.mainMacaroon
 const edgeMacaroon = defineSecret('EDGE_TAPD_MACAROON');  // Edge admin.mainMacaroon
 const adminUid = defineString('ADMIN_UID');  // Your UID
-
 
 
 // Initialize Firebase Admin SDK
@@ -58,7 +49,6 @@ async function verifyToken(req, res) {
   }
 }
 
-const db = getFirestore();
 const rtdb = getDatabase();
 
 // Helper function to fetch all spreadsheet data
@@ -310,9 +300,6 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
   });
 });
 
-// Bypass SSL verification (for testing only)
-//process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
 // LND proxy para conectar con el Nodo Umbrel
 exports.lndProxy = functions.https.onRequest({secrets: [mainMacaroon]}, (req, res) => {
   cors(req, res, async () => {
@@ -368,7 +355,16 @@ exports.lndProxy = functions.https.onRequest({secrets: [mainMacaroon]}, (req, re
           return res.status(400).json({ error: 'Invalid JSON body' });
         }
       }
-
+      /*
+      // Check lookup invoice by hash
+      if (path.startsWith('/v1/invoice/') && req.method === 'GET') {
+        // Validate hash format (base64, ~43 chars)
+        const hash = path.split('/v1/invoice/')[1];
+        if (!/^[A-Za-z0-9_-]{43}$/.test(hash)) {
+          return res.status(400).json({ error: 'Invalid payment hash' });
+        }
+      }
+      */
       // 4. Forward to LND
 
       const lndUrlFinal = `${lndUrl.value()}${path.startsWith('/') ? '' : '/'}${path}`;
@@ -529,9 +525,12 @@ const app = next({
 const handle = app.getRequestHandler();
 
 exports.nextServer = functions.https.onRequest(async (req, res) => {
+  
   try {
     await app.prepare();
+
     handle(req, res);
+
   } catch (error) {
     console.error('Next.js server error:', error);
     res.status(500).send('Server Error');

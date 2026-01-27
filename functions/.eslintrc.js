@@ -14,6 +14,8 @@ module.exports = {
     "no-restricted-globals": ["error", "name", "length"],
     "prefer-arrow-callback": "error",
     "quotes": ["error", "double", {"allowTemplateLiterals": true}],
+    "@typescript-eslint/no-unused-vars": "warn",
+    "import/no-anonymous-default-export": "off"
   },
   overrides: [
     {
