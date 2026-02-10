@@ -11,12 +11,16 @@
         "function": "lndProxy"
       },
       {
+        "source": "/_next/**",
+        "function": "nextServer"
+      },
+      {
         "source": "**",
         "function": "nextServer"
       },
       {
         "source": "/api/tapdProxy/**",
-        "destination": "tapdProxy"
+        "function": "tapdProxy"
       }
     ],
     "cleanUrls": true,
