@@ -526,6 +526,8 @@ const handle = app.getRequestHandler();
 
 exports.nextServer = functions.https.onRequest(async (req, res) => {
   
+  console.log('Request:', req.url);
+
   try {
     await app.prepare();
 
