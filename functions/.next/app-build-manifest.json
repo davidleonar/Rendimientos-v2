@@ -16,19 +16,19 @@
       "static/css/4459dd50f1226f5f.css",
       "static/chunks/app/layout-09ccae5731db2537.js"
     ],
-    "/api/tapdProxy/[...path]/route": [
-      "static/chunks/webpack-8fdc395da7a0cd74.js",
-      "static/chunks/4bd1b696-409494caf8c83275.js",
-      "static/chunks/255-091853b4155593e2.js",
-      "static/chunks/main-app-ad10f0a8b7cebafe.js",
-      "static/chunks/app/api/tapdProxy/[...path]/route-d1db78a5541a135a.js"
-    ],
     "/api/lndProxy/[...path]/route": [
       "static/chunks/webpack-8fdc395da7a0cd74.js",
       "static/chunks/4bd1b696-409494caf8c83275.js",
       "static/chunks/255-091853b4155593e2.js",
       "static/chunks/main-app-ad10f0a8b7cebafe.js",
       "static/chunks/app/api/lndProxy/[...path]/route-d1db78a5541a135a.js"
+    ],
+    "/api/tapdProxy/[...path]/route": [
+      "static/chunks/webpack-8fdc395da7a0cd74.js",
+      "static/chunks/4bd1b696-409494caf8c83275.js",
+      "static/chunks/255-091853b4155593e2.js",
+      "static/chunks/main-app-ad10f0a8b7cebafe.js",
+      "static/chunks/app/api/tapdProxy/[...path]/route-d1db78a5541a135a.js"
     ],
     "/page": [
       "static/chunks/webpack-8fdc395da7a0cd74.js",
