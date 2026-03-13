@@ -10,11 +10,14 @@ const fs = require('fs');
 const url = require('url');
 
 const { defineString, defineSecret } = require('firebase-functions/params');
-const { https: { onRequest } } = require('firebase-functions/v2');
+const { onValueCreated } = require('firebase-functions/v2/database');
+//const { https: { onRequest } } = require('firebase-functions/v2');
+const { onRequest } = require('firebase-functions/v2/https');
 
 const next = require('next');
 const path = require('path');
 const admin = require('firebase-admin');
+const nodemailer = require('nodemailer');
 
 //mainMacaroons
 const lndUrl = defineString('LND_URL'); 
@@ -22,6 +25,10 @@ const mainMacaroon = defineSecret('MAIN_LND_MACAROON');  // Main admin.mainMacar
 const edgeMacaroon = defineSecret('EDGE_TAPD_MACAROON');  // Edge admin.mainMacaroon
 const adminUid = defineString('ADMIN_UID');  // Your UID
 
+//Mailer configuration (example with Gmail, adjust as needed)
+const adminEmail = defineString('ADMIN_EMAIL');
+const smtpUser = defineString('SMTP_USER');
+const smtpPass = defineSecret('SMTP_PASS');
 
 // Initialize Firebase Admin SDK
 initializeApp({
@@ -82,7 +89,7 @@ async function fetchAllSpreadsheetData(spreadsheetId, range) {
   }
 }
 
-exports.syncSheetsToRTDB = functions.https.onRequest((req, res) => {
+exports.syncSheetsToRTDB = onRequest((req, res) => {
   cors(req, res, async () => {
     // Verify token (auth required)
     if (!(await verifyToken(req, res))) return;
@@ -197,7 +204,7 @@ async function fetchSpreadsheetDataById(spreadsheetId, range, id) {
   }
 }
 
-exports.getDataById = functions.https.onRequest((req, res) => {
+exports.getDataById = onRequest((req, res) => {
   cors(req, res, async () => {
 
     // The verifyToken middleware now handles sending the response on failure.
@@ -267,7 +274,7 @@ exports.getDataById = functions.https.onRequest((req, res) => {
 });
 
 // New function: getMovementsById
-exports.getMovementsById = functions.https.onRequest((req, res) => {
+exports.getMovementsById = onRequest((req, res) => {
   cors(req, res, async () => {
     if (!(await verifyToken(req, res))) return;
     if (req.method !== 'GET') {
@@ -281,7 +288,7 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 
     try {
       const spreadsheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-      const range = 'Sheet1!A1:G82'; // Adjust if movements are in a different sheet/range
+      const range = 'Sheet1!A1:G120'; // Adjust if movements are in a different sheet/range
 
       const filteredData = await fetchSpreadsheetDataById(spreadsheetId, range, id);
 
@@ -301,7 +308,7 @@ exports.getMovementsById = functions.https.onRequest((req, res) => {
 });
 
 // LND proxy para conectar con el Nodo Umbrel
-exports.lndProxy = functions.https.onRequest({secrets: [mainMacaroon]}, (req, res) => {
+exports.lndProxy = onRequest({secrets: [mainMacaroon]}, (req, res) => {
   cors(req, res, async () => {
     //if (!(await verifyToken(req, res))) return;
 
@@ -423,7 +430,7 @@ exports.lndProxy = functions.https.onRequest({secrets: [mainMacaroon]}, (req, re
   });
 });
 
-exports.tapdProxy = functions.https.onRequest({secrets: [edgeMacaroon]}, (req, res) => {
+exports.tapdProxy = onRequest({secrets: [edgeMacaroon]}, (req, res) => {
   cors(req, res, async () => {
 
     console.log('tapdProxy request:', {
@@ -524,7 +531,7 @@ const app = next({
 });
 const handle = app.getRequestHandler();
 
-exports.nextServer = functions.https.onRequest(async (req, res) => {
+exports.nextServer = onRequest(async (req, res) => {
   
   console.log('Request:', req.url);
 
@@ -538,3 +545,55 @@ exports.nextServer = functions.https.onRequest(async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
+
+// Helper to send email
+async function sendWithdrawalEmail(withdrawalData, type) {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: smtpUser.value(),
+      pass: smtpPass.value(),
+    },
+  });
+
+  const mailOptions = {
+    from: smtpUser.value(),
+    to: adminEmail.value(),
+    subject: `Rendimientos.net - New ${type} Withdrawal Request`,
+    text: `
+      User ID: ${withdrawalData.userId || 'N/A'}
+      Name: ${withdrawalData.name || 'N/A'}
+      Email: ${withdrawalData.userEmail || 'N/A'}
+      Amount: ${withdrawalData.amount || 'N/A'}
+      Option: ${withdrawalData.option || 'N/A'}
+      Bank Data: ${withdrawalData.bankData || 'N/A'}
+      Bank Name: ${withdrawalData.bankName || 'N/A'}
+      Country: ${withdrawalData.country || 'N/A'}
+      Timestamp: ${new Date().toISOString()}
+
+      Full Details: ${JSON.stringify(withdrawalData, null, 2)}
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Email sent for withdrawal: ${withdrawalData.userId}`);
+  } catch (error) {
+    console.error('Email send error:', error);
+    // Optional: Add retry or Firebase alert integration later
+  }
+}
+
+// Trigger for Global Withdrawals (v2 syntax)
+exports.notifyGlobalWithdrawal = onValueCreated(
+  {
+    ref: "withdrawals/{uid}/{requestId}",
+    secrets: ['SMTP_PASS']  // Pass your secret(s); add more if needed
+  },
+  
+  async (event) => {
+    const withdrawal = event.data.val();
+    await sendWithdrawalEmail(withdrawal, 'Global');
+    return null;  // End cleanly
+  }
+);
