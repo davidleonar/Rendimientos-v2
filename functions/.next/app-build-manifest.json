@@ -13,7 +13,7 @@
       "static/chunks/255-091853b4155593e2.js",
       "static/chunks/main-app-ad10f0a8b7cebafe.js",
       "static/css/de70bee13400563f.css",
-      "static/css/4459dd50f1226f5f.css",
+      "static/css/301dadc860b2eddd.css",
       "static/chunks/app/layout-09ccae5731db2537.js"
     ],
     "/api/tapdProxy/[...path]/route": [
@@ -35,13 +35,13 @@
       "static/chunks/4bd1b696-409494caf8c83275.js",
       "static/chunks/255-091853b4155593e2.js",
       "static/chunks/main-app-ad10f0a8b7cebafe.js",
-      "static/css/4459dd50f1226f5f.css",
+      "static/css/301dadc860b2eddd.css",
       "static/chunks/7cb1fa1f-97034d6351c51d0a.js",
       "static/chunks/6c609feb-e196a6fbb7a5e528.js",
       "static/chunks/aea36d77-6fa4cc8d74e0530d.js",
       "static/chunks/dd8162e8-0e1dbb1e68a8a812.js",
       "static/chunks/944-33195e0b9b2021b0.js",
-      "static/chunks/app/page-cb94b57a6be0cb14.js"
+      "static/chunks/app/page-64d56938bdc02a32.js"
     ]
   }
 }
