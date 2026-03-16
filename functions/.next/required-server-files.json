@@ -1,8 +1,16 @@
 {
   "version": 1,
   "config": {
-    "env": {},
-    "webpack": null,
+    "env": {
+      "NEXT_PUBLIC_FIREBASE_API_KEY": "AIzaSyBk_fTMgmkwZGoW154ntCxxXwiDMy5o7KA",
+      "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN": "rendimientos-5dbb9.firebaseapp.com",
+      "NEXT_PUBLIC_FIREBASE_DB_URL": "https://rendimientos-5dbb9-default-rtdb.firebaseio.com",
+      "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "rendimientos-5dbb9",
+      "NEXT_PUBLIC_FIREBASE_STRG_BUCKET": "rendimientos-5dbb9.firebasestorage.app",
+      "NEXT_PUBLIC_FIREBASE_MSID": "698366956468",
+      "NEXT_PUBLIC_FIREBASE_APP_ID": "1:698366956468:web:18ae8758f5f3c4fe5dd8e1",
+      "NEXT_PUBLIC_FIREBASE_MSM_ID": "G-Y5QKXN0N6C"
+    },
     "eslint": {
       "ignoreDuringBuilds": false
     },
@@ -99,7 +107,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "/Users/davidpaniagua",
+    "outputFileTracingRoot": "/Users/davidpaniagua/Documents/my-project/my-spa/",
     "experimental": {
       "useSkewCookie": false,
       "cacheLife": {
@@ -289,11 +297,11 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.js",
     "turbopack": {
-      "root": "/Users/davidpaniagua"
+      "root": "/Users/davidpaniagua/Documents/my-project/my-spa/"
     }
   },
   "appDir": "/Users/davidpaniagua/Documents/my-project/my-spa",
-  "relativeAppDir": "Documents/my-project/my-spa",
+  "relativeAppDir": "",
   "files": [
     ".next/routes-manifest.json",
     ".next/server/pages-manifest.json",
