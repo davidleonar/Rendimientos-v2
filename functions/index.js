@@ -530,13 +530,14 @@ const app = next({
   conf: { distDir: '.next' },
 });
 const handle = app.getRequestHandler();
+const preparePromise = app.prepare();
 
-exports.nextServer = onRequest(async (req, res) => {
+exports.nextServer = onRequest({ memory: '512MiB' }, async (req, res) => {
   
   console.log('Request:', req.url);
 
   try {
-    await app.prepare();
+    await preparePromise;
 
     handle(req, res);
 
