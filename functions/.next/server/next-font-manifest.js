@@ -1,1 +1,1 @@
-self.__NEXT_FONT_MANIFEST='{"pages":{},"app":{"/Users/davidpaniagua/Documents/my-project/my-spa/src/app/layout":["static/media/4cf2300e9c8272f7-s.p.woff2","static/media/93f479601ee12b01-s.p.woff2"]},"appUsingSizeAdjust":true,"pagesUsingSizeAdjust":false}';
+self.__NEXT_FONT_MANIFEST='{"pages":{},"app":{"/Users/davidpaniagua/Documents/my-project/my-spa/src/app/layout":["static/media/e4af272ccee01ff0-s.p.woff2"]},"appUsingSizeAdjust":true,"pagesUsingSizeAdjust":false}';
