@@ -585,6 +585,48 @@ async function sendWithdrawalEmail(withdrawalData, type) {
   }
 }
 
+// Helper to send confirmation email to the user
+async function sendUserWithdrawalEmail(withdrawalData) {
+  if (!withdrawalData.userEmail) {
+    console.warn('Skipping user confirmation email: no userEmail provided');
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: smtpUser.value(),
+      pass: smtpPass.value(),
+    },
+  });
+
+  const mailOptions = {
+    from: smtpUser.value(),
+    to: withdrawalData.userEmail,
+    subject: `Transfer confirmation from Rendimientos.net`,
+    text: `
+      Hello ${withdrawalData.name || 'User'},
+
+      We have successfully received your withdrawal request!
+      
+      Amount: ${withdrawalData.amount || 'N/A'}
+      Option: ${withdrawalData.option || 'N/A'}
+      Bank Data: ${withdrawalData.bankData || 'N/A'}
+      Bank Name: ${withdrawalData.bankName || 'N/A'}
+      Country: ${withdrawalData.country || 'N/A'}
+
+      We will process it shortly. Thank you!
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Confirmation email sent to user: ${withdrawalData.userEmail}`);
+  } catch (error) {
+    console.error('User email send error:', error);
+  }
+}
+
 // Trigger for Global Withdrawals (v2 syntax)
 exports.notifyGlobalWithdrawal = onValueCreated(
   {
@@ -595,6 +637,7 @@ exports.notifyGlobalWithdrawal = onValueCreated(
   async (event) => {
     const withdrawal = event.data.val();
     await sendWithdrawalEmail(withdrawal, 'Global');
+    await sendUserWithdrawalEmail(withdrawal);
     return null;  // End cleanly
   }
 );

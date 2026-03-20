@@ -18,6 +18,7 @@ The application defines several important 2nd Gen HTTP Cloud Functions:
 - **VM Name:** `lnd-proxy-vm2` (Compute Engine `e2-small` running in `us-central1-a`)
 - **Purpose:** Acts as a reverse proxy between the public Cloud Functions (`lndProxy` / `tapdProxy`) and internal Tailscale-networked nodes (`Umbrel`/Lightning nodes).
 - **Proxy Script:** Node.js app located at `/home/davidleonar/proxy.js` listening on port `3000`.
+- **Process Management:** The proxy runs as a background daemon using `pm2` (started via `pm2 start proxy.js --name proxy`). Its configuration is saved (`pm2 save`) to automatically recover across instance reboots.
 - **Node Routing Logic:**
   1. Compares incoming `Grpc-Metadata-macaroon` headers against hardcoded trusted tokens.
   2. If matching the `MAIN_MACAROON`, it forwards the traffic to the Main Node IP (`100.103.9.71:8080`) securely via `./mainnode/tls.cert`.
