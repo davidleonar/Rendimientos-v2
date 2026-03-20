@@ -10,7 +10,7 @@ const fs = require('fs');
 const url = require('url');
 
 const { defineString, defineSecret } = require('firebase-functions/params');
-const { onValueCreated } = require('firebase-functions/v2/database');
+const { onValueCreated, onValueUpdated } = require('firebase-functions/v2/database');
 //const { https: { onRequest } } = require('firebase-functions/v2');
 const { onRequest } = require('firebase-functions/v2/https');
 
@@ -638,6 +638,60 @@ exports.notifyGlobalWithdrawal = onValueCreated(
     const withdrawal = event.data.val();
     await sendWithdrawalEmail(withdrawal, 'Global');
     await sendUserWithdrawalEmail(withdrawal);
+    return null;  // End cleanly
+  }
+);
+
+// Trigger to notify user when withdrawal is settled
+exports.notifyWithdrawalSettled = onValueUpdated(
+  {
+    ref: "withdrawals/{uid}/{requestId}",
+    secrets: ['SMTP_PASS']
+  },
+  async (event) => {
+    const before = event.data.before.val() || {};
+    const after = event.data.after.val() || {};
+
+    // Only trigger if status just changed to 'settled'
+    if (after.status === 'settled' && before.status !== 'settled') {
+      if (!after.userEmail) {
+        console.warn('Skipping settled email: no userEmail provided');
+        return null;
+      }
+
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: smtpUser.value(),
+          pass: smtpPass.value(),
+        },
+      });
+
+      const mailOptions = {
+        from: smtpUser.value(),
+        to: after.userEmail,
+        subject: `Withdrawal Completed - Rendimientos.net`,
+        text: `
+          Hello ${after.name || 'User'},
+
+          Great news! Your withdrawal request has been successfully COMPLETED.
+          
+          Amount: ${after.amount || 'N/A'}
+          Destination: ${after.bankName || 'N/A'} - ${after.bankData || 'N/A'}
+          
+          The funds should now be fully transferred. Please check your bank account to verify!
+          
+          Thank you for using Rendimientos.net!
+        `,
+      };
+
+      try {
+        await transporter.sendMail(mailOptions);
+        console.log(`Settled confirmation email sent to user: ${after.userEmail}`);
+      } catch (error) {
+        console.error('User settled email send error:', error);
+      }
+    }
     return null;  // End cleanly
   }
 );
