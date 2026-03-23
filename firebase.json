@@ -5,10 +5,31 @@
   "hosting": {
     "public": "functions/public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "redirects": [
+      {
+        "source": "**/*.php",
+        "destination": "/404",
+        "type": 301
+      },
+      {
+        "source": "**/.git/**",
+        "destination": "/404",
+        "type": 301
+      },
+      {
+        "source": "**/.env*",
+        "destination": "/404",
+        "type": 301
+      }
+    ],
     "rewrites": [
       {
         "source": "/api/lndProxy/**",
         "function": "lndProxy"
+      },
+      {
+        "source": "/api/tapdProxy/**",
+        "function": "tapdProxy"
       },
       {
         "source": "/_next/**",
@@ -17,10 +38,6 @@
       {
         "source": "**",
         "function": "nextServer"
-      },
-      {
-        "source": "/api/tapdProxy/**",
-        "function": "tapdProxy"
       }
     ],
     "cleanUrls": true,
