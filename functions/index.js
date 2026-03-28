@@ -3,7 +3,7 @@ const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getDatabase } = require('firebase-admin/database');
-const cors = require('cors')({ origin: true }); 
+const cors = require('cors')({ origin: true });
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -20,7 +20,7 @@ const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 
 //mainMacaroons
-const lndUrl = defineString('LND_URL'); 
+const lndUrl = defineString('LND_URL');
 const mainMacaroon = defineSecret('MAIN_LND_MACAROON');  // Main admin.mainMacaroon
 const edgeMacaroon = defineSecret('EDGE_TAPD_MACAROON');  // Edge admin.mainMacaroon
 const adminUid = defineString('ADMIN_UID');  // Your UID
@@ -39,7 +39,7 @@ initializeApp({
 // Middleware to verify token
 async function verifyToken(req, res) {
   const authHeader = req.headers.authorization;
-  
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     res.status(401).send('Unauthorized: No token provided.');
     return false; // Indicate failure
@@ -100,56 +100,56 @@ exports.syncSheetsToRTDB = onRequest((req, res) => {
     }
 
     console.log('syncSheetsToRTDB function started.');
-  try {
-    // 1. Fetch Balances
-    console.log('Fetching balances data...');
-    const balancesSheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
-    const balancesRange = 'Sheet1!A1:G50';
-    const balancesData = await fetchAllSpreadsheetData(balancesSheetId, balancesRange);
-    console.log(`Fetched ${balancesData.length} balances.`);
+    try {
+      // 1. Fetch Balances
+      console.log('Fetching balances data...');
+      const balancesSheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
+      const balancesRange = 'Sheet1!A1:G50';
+      const balancesData = await fetchAllSpreadsheetData(balancesSheetId, balancesRange);
+      console.log(`Fetched ${balancesData.length} balances.`);
 
-    // 2. Fetch Movements
-    console.log('Fetching movements data...');
-    const movementsSheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-    const movementsRange = 'Sheet1!A1:G82';
-    const movementsData = await fetchAllSpreadsheetData(movementsSheetId, movementsRange);
-    console.log(`Fetched ${movementsData.length} movements.`);
+      // 2. Fetch Movements
+      console.log('Fetching movements data...');
+      const movementsSheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
+      const movementsRange = 'Sheet1!A1:G82';
+      const movementsData = await fetchAllSpreadsheetData(movementsSheetId, movementsRange);
+      console.log(`Fetched ${movementsData.length} movements.`);
 
-    // 3. Restructure data
-    console.log('Restructuring data...');
-    const rtdbData = {
-      balances: {},
-    };
+      // 3. Restructure data
+      console.log('Restructuring data...');
+      const rtdbData = {
+        balances: {},
+      };
 
-    balancesData.forEach((item) => {
-      if (item.id) {
-        rtdbData.balances[item.id] = item;
-      }
-    });
-
-    movementsData.forEach((item) => {
-      if (item.id && rtdbData.balances[item.id]) {
-        if (!rtdbData.balances[item.id].movements) {
-          rtdbData.balances[item.id].movements = [];
+      balancesData.forEach((item) => {
+        if (item.id) {
+          rtdbData.balances[item.id] = item;
         }
-        rtdbData.balances[item.id].movements.push(item);
-      }
-    });
-    console.log('Data restructured.');
+      });
 
-    // 4. Write to Realtime Database
-    console.log('Writing data to Realtime Database...');
-    await rtdb.ref('balances').set(rtdbData.balances);    // se puede cambiar a update() si no se quiere sobreescribir todo y solo actualizar
-    console.log('Data successfully written to Realtime Database.');
+      movementsData.forEach((item) => {
+        if (item.id && rtdbData.balances[item.id]) {
+          if (!rtdbData.balances[item.id].movements) {
+            rtdbData.balances[item.id].movements = [];
+          }
+          rtdbData.balances[item.id].movements.push(item);
+        }
+      });
+      console.log('Data restructured.');
 
-    res.status(200).json({ message: 'Successfully synced spreadsheet data to Realtime Database.' });
-    console.log('syncSheetsToRTDB function finished successfully.');
-  } catch (error) {
-    console.error('Error syncing data to RTDB:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-    console.log('syncSheetsToRTDB function finished with error.');
-  }
-});
+      // 4. Write to Realtime Database
+      console.log('Writing data to Realtime Database...');
+      await rtdb.ref('balances').set(rtdbData.balances);    // se puede cambiar a update() si no se quiere sobreescribir todo y solo actualizar
+      console.log('Data successfully written to Realtime Database.');
+
+      res.status(200).json({ message: 'Successfully synced spreadsheet data to Realtime Database.' });
+      console.log('syncSheetsToRTDB function finished successfully.');
+    } catch (error) {
+      console.error('Error syncing data to RTDB:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+      console.log('syncSheetsToRTDB function finished with error.');
+    }
+  });
 });
 
 // Google Sheets configuration
@@ -248,8 +248,30 @@ exports.getDataById = onRequest((req, res) => {
         return res.status(500).send('No "id" column found in spreadsheet headers.');
       }
 
+      const uidColumnIndex = headers.findIndex(
+        (header) => header.toLowerCase() === 'uid'
+      );
+      if (uidColumnIndex === -1) {
+        return res.status(500).send('No "uid" column found in spreadsheet headers.');
+      }
+
+      const isAdmin = req.user.uid === adminUid.value();
+
       const filteredData = data
-        .filter((row) => row[idColumnIndex] && row[idColumnIndex].toString() === id.toString())
+        .filter((row) => {
+          // Check if ID matches
+          if (!row[idColumnIndex] || row[idColumnIndex].toString() !== id.toString()) {
+            return false;
+          }
+          // Validate UID matches req.user.uid, bypass if Admin
+          if (!isAdmin) {
+            const rowUid = row[uidColumnIndex];
+            if (!rowUid || rowUid.toString() !== req.user.uid) {
+              return false;
+            }
+          }
+          return true;
+        })
         .map((row) => {
           const rowData = {};
           headers.forEach((header, index) => {
@@ -261,6 +283,8 @@ exports.getDataById = onRequest((req, res) => {
       if (filteredData.length === 0) {
         return res.status(404).send(`No data found for id: ${id}`);
       }
+
+      console.log("Successfully fetched data:", filteredData);
 
       res.status(200).json({
         success: true,
@@ -308,7 +332,7 @@ exports.getMovementsById = onRequest((req, res) => {
 });
 
 // LND proxy para conectar con el Nodo Umbrel
-exports.lndProxy = onRequest({secrets: [mainMacaroon]}, (req, res) => {
+exports.lndProxy = onRequest({ secrets: [mainMacaroon] }, (req, res) => {
   cors(req, res, async () => {
     //if (!(await verifyToken(req, res))) return;
 
@@ -430,7 +454,7 @@ exports.lndProxy = onRequest({secrets: [mainMacaroon]}, (req, res) => {
   });
 });
 
-exports.tapdProxy = onRequest({secrets: [edgeMacaroon]}, (req, res) => {
+exports.tapdProxy = onRequest({ secrets: [edgeMacaroon] }, (req, res) => {
   cors(req, res, async () => {
 
     console.log('tapdProxy request:', {
@@ -442,7 +466,7 @@ exports.tapdProxy = onRequest({secrets: [edgeMacaroon]}, (req, res) => {
     });
 
     if (!(await verifyToken(req, res))) return;
-    
+
     try {
 
       // Use x-forwarded-url as fallback if path is undefined
@@ -533,7 +557,7 @@ const handle = app.getRequestHandler();
 const preparePromise = app.prepare();
 
 exports.nextServer = onRequest({ memory: '512MiB' }, async (req, res) => {
-  
+
   console.log('Request:', req.url);
 
   try {
@@ -633,7 +657,7 @@ exports.notifyGlobalWithdrawal = onValueCreated(
     ref: "withdrawals/{uid}/{requestId}",
     secrets: ['SMTP_PASS']  // Pass your secret(s); add more if needed
   },
-  
+
   async (event) => {
     const withdrawal = event.data.val();
     await sendWithdrawalEmail(withdrawal, 'Global');
