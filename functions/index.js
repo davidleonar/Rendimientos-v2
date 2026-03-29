@@ -111,7 +111,7 @@ exports.syncSheetsToRTDB = onRequest((req, res) => {
       // 2. Fetch Movements
       console.log('Fetching movements data...');
       const movementsSheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-      const movementsRange = 'Sheet1!A1:G82';
+      const movementsRange = 'Sheet1!A1:G120';
       const movementsData = await fetchAllSpreadsheetData(movementsSheetId, movementsRange);
       console.log(`Fetched ${movementsData.length} movements.`);
 
@@ -719,3 +719,94 @@ exports.notifyWithdrawalSettled = onValueUpdated(
     return null;  // End cleanly
   }
 );
+
+// --- NEW: Bancolombia Webhook ---
+exports.bancolombiaWebhook = onRequest(async (req, res) => {
+  // Basic token security check (we define a static token that the GAS uses)
+  const secretToken = process.env.WEBHOOK_SECRET || 'david_bancolombia_123';
+  if (req.query.token !== secretToken) {
+    return res.status(403).send('Forbidden: Invalid token');
+  }
+
+  const emailBody = req.body.emailBody;
+  if (!emailBody) {
+    return res.status(400).send('Missing email body');
+  }
+
+  if (!emailBody.includes("Bancolombia:") || !emailBody.includes("RENDIMIENTOS")) {
+    console.log("Ignored email: Does not contain Bancolombia: RENDIMIENTOS");
+    return res.status(200).send("Ignored: Not a RENDIMIENTOS deposit");
+  }
+
+  console.log('Received email body:', emailBody);
+  // Parse using Regex
+  // Example string: 
+  // Bancolombia: RENDIMIENTOS, recibiste un pago de SUSANA ARBOLEDA CEBALLOS por $2,000.00 en tu cuenta *9328 conectado a la llave 0092325247 el 28/03/2026 a las 18:34. Con codigo QR es facil y de una. Dudas al 018000912345.
+  
+  const nameMatch = emailBody.match(/pago de (.*?) por/i);
+  const amountMatch = emailBody.match(/por \$([0-9,.,\s]+) en tu cuenta/i);
+  const dateMatch = emailBody.match(/el (\d{2}\/\d{2}\/\d{4})/i);
+  const timeMatch = emailBody.match(/a las (\d{2}:\d{2})/i);
+
+  if (!nameMatch || !amountMatch) {
+    console.error('Regex failed to match name or amount in:', emailBody);
+    return res.status(400).send('Could not parse Bancolombia format');
+  }
+
+  const parsedName = nameMatch[1].trim().toUpperCase();
+  const parsedAmount = amountMatch[1].trim(); // Extracting amount as string
+  const parsedDate = dateMatch ? dateMatch[1] : null;
+  const parsedTime = timeMatch ? timeMatch[1] : null;
+
+  // Search RTDB balances for a matching name
+  const balancesSnap = await rtdb.ref('balances').once('value');
+  const balances = balancesSnap.val() || {};
+
+  let matchedUid = null;
+  // Match using the first two words (case-insensitive)
+  const parsedNameTokens = parsedName.split(/\s+/).slice(0, 2).join(' ');
+  for (const key in balances) {
+    const userBalance = balances[key];
+    if (userBalance && userBalance.name) {
+      const dbNameTokens = userBalance.name.trim().toUpperCase().split(/\s+/).slice(0, 2).join(' ');
+      if (dbNameTokens === parsedNameTokens && parsedNameTokens.length > 0) {
+        matchedUid = userBalance.uid;
+        break;
+      }
+    }
+  }
+
+  const depositData = {
+    parsedName,
+    amount: parsedAmount,
+    date: parsedDate,
+    time: parsedTime,
+    rawEmail: emailBody,
+    timestamp: admin.database.ServerValue.TIMESTAMP,
+    status: 'settled', // it's already a completed deposit
+    userNotified: false
+  };
+
+  try {
+    if (matchedUid) {
+      console.log(`Matched incoming deposit to user UID: ${matchedUid}`);
+      depositData.uid = matchedUid;
+      const newRef = rtdb.ref(`deposits/${matchedUid}`).push();
+      await newRef.set(depositData);
+      
+      // Keep a master log
+      await rtdb.ref(`deposits/all/${newRef.key}`).set(depositData);
+    } else {
+      console.log(`Unassigned incoming deposit for name: ${parsedName}`);
+      depositData.adminNotified = false;
+      depositData.status = 'unassigned';
+      const newRef = rtdb.ref(`unassignedDeposits`).push();
+      await newRef.set(depositData);
+    }
+    
+    res.status(200).send('Successfully processed integration');
+  } catch (err) {
+    console.error('Firebase save error:', err);
+    res.status(500).send('Database error');
+  }
+});

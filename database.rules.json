@@ -19,11 +19,25 @@
       }
     },
 
+    "deposits": {
+      ".read": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
+      ".write": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
+      "$uid": {
+        ".read": "auth != null && $uid === auth.uid",
+        ".write": "auth != null && $uid === auth.uid"
+      }
+    },
+
+    "unassignedDeposits": {
+      ".read": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
+      ".write": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'"
+    },
+
     "userSavings": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
-      "$txHash": {
-        ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.child('userId').val() === $uid",
+        "$txHash": {
+          ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.child('userId').val() === $uid"
         }
       }
     }
