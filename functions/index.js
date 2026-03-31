@@ -94,10 +94,6 @@ exports.syncSheetsToRTDB = onRequest((req, res) => {
     // Verify token (auth required)
     if (!(await verifyToken(req, res))) return;
 
-    // Check if user is admin
-    if (req.user.uid !== adminUid.value()) {
-      return res.status(403).send('Forbidden: Admin access required.');
-    }
 
     console.log('syncSheetsToRTDB function started.');
     try {
