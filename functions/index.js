@@ -24,6 +24,7 @@ const lndUrl = defineString('LND_URL');
 const mainMacaroon = defineSecret('MAIN_LND_MACAROON');  // Main admin.mainMacaroon
 const edgeMacaroon = defineSecret('EDGE_TAPD_MACAROON');  // Edge admin.mainMacaroon
 const adminUid = defineString('ADMIN_UID');  // Your UID
+const webhookSecret = defineString('WEBHOOK_SECRET');  // Your webhook secret
 
 //Mailer configuration (example with Gmail, adjust as needed)
 const adminEmail = defineString('ADMIN_EMAIL');
@@ -717,9 +718,63 @@ exports.notifyWithdrawalSettled = onValueUpdated(
 );
 
 // --- NEW: Bancolombia Webhook ---
-exports.bancolombiaWebhook = onRequest(async (req, res) => {
-  // Basic token security check (we define a static token that the GAS uses)
-  const secretToken = process.env.WEBHOOK_SECRET || 'david_bancolombia_123';
+async function sendDepositEmailToAdmin(depositData, matched) {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: smtpUser.value(),
+      pass: smtpPass.value(),
+    },
+  });
+
+  let btcUsdt = 'N/A';
+  let usdtCop = 'N/A';
+  try {
+    // Cloud Functions in US are geoblocked by Binance.com API. Using CoinGecko as fallback.
+    const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,tether&vs_currencies=usd,cop');
+    if (cgRes.ok) {
+      const cgData = await cgRes.json();
+      btcUsdt = cgData?.bitcoin?.usd || 'N/A';
+      usdtCop = cgData?.tether?.cop || 'N/A';
+    } else {
+      console.error('CoinGecko API error:', cgRes.status, await cgRes.text());
+    }
+  } catch (e) {
+    console.error('Error fetching prices:', e);
+  }
+
+  const statusType = matched ? 'MATCHED' : 'UNASSIGNED';
+  const mailOptions = {
+    from: smtpUser.value(),
+    to: adminEmail.value(),
+    subject: `Rendimientos.net - New ${statusType} Deposit Received`,
+    text: `
+      A new Bancolombia deposit has been processed.
+      
+      Status: ${statusType}
+      Name: ${depositData.parsedName}
+      Amount: $${depositData.amount}
+      Date: ${depositData.date || 'N/A'}
+      Time: ${depositData.time || 'N/A'}
+      UID Matched: ${depositData.uid || 'N/A'}
+
+      Current Prices (CoinGecko):
+      BTC/USDT: $${btcUsdt}
+      COP/USDT: $${usdtCop}
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Admin email sent for deposit update BTC/USDT: ${btcUsdt} COP/USDT: ${usdtCop}`);
+  } catch (error) {
+    console.error('Email send error for deposit:', error);
+  }
+}
+
+exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass] }, async (req, res) => {
+  // Basic token security check
+  const secretToken = webhookSecret.value();
   if (req.query.token !== secretToken) {
     return res.status(403).send('Forbidden: Invalid token');
   }
@@ -738,7 +793,7 @@ exports.bancolombiaWebhook = onRequest(async (req, res) => {
   // Parse using Regex
   // Example string: 
   // Bancolombia: RENDIMIENTOS, recibiste un pago de SUSANA ARBOLEDA CEBALLOS por $2,000.00 en tu cuenta *9328 conectado a la llave 0092325247 el 28/03/2026 a las 18:34. Con codigo QR es facil y de una. Dudas al 018000912345.
-  
+
   const nameMatch = emailBody.match(/pago de (.*?) por/i);
   const amountMatch = emailBody.match(/por \$([0-9,.,\s]+) en tu cuenta/i);
   const dateMatch = emailBody.match(/el (\d{2}\/\d{2}\/\d{4})/i);
@@ -789,17 +844,21 @@ exports.bancolombiaWebhook = onRequest(async (req, res) => {
       depositData.uid = matchedUid;
       const newRef = rtdb.ref(`deposits/${matchedUid}`).push();
       await newRef.set(depositData);
-      
+
       // Keep a master log
       await rtdb.ref(`deposits/all/${newRef.key}`).set(depositData);
+
+      await sendDepositEmailToAdmin(depositData, true);
     } else {
       console.log(`Unassigned incoming deposit for name: ${parsedName}`);
       depositData.adminNotified = false;
       depositData.status = 'unassigned';
       const newRef = rtdb.ref(`unassignedDeposits`).push();
       await newRef.set(depositData);
+
+      await sendDepositEmailToAdmin(depositData, false);
     }
-    
+
     res.status(200).send('Successfully processed integration');
   } catch (err) {
     console.error('Firebase save error:', err);
