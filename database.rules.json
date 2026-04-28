@@ -40,6 +40,13 @@
           ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.child('userId').val() === $uid"
         }
       }
+    },
+
+    "cryptoBalances": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
+        ".write": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'"
+      }
     }
   }
 }

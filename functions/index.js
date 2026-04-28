@@ -8,6 +8,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const url = require('url');
+const crypto = require('crypto');
 
 const { defineString, defineSecret } = require('firebase-functions/params');
 const { onValueCreated, onValueUpdated } = require('firebase-functions/v2/database');
@@ -25,6 +26,12 @@ const mainMacaroon = defineSecret('MAIN_LND_MACAROON');  // Main admin.mainMacar
 const edgeMacaroon = defineSecret('EDGE_TAPD_MACAROON');  // Edge admin.mainMacaroon
 const adminUid = defineString('ADMIN_UID');  // Your UID
 const webhookSecret = defineString('WEBHOOK_SECRET');  // Your webhook secret
+
+// Binance secrets
+const binanceApiKey = defineSecret('BINANCE_API_KEY');
+const binanceSecretKey = defineSecret('BINANCE_SECRET_KEY');
+const binanceProxyToken = defineSecret('BINANCE_PROXY_TOKEN');
+const proxyVmUrl = defineString('PROXY_VM_URL');
 
 //Mailer configuration (example with Gmail, adjust as needed)
 const adminEmail = defineString('ADMIN_EMAIL');
@@ -717,6 +724,98 @@ exports.notifyWithdrawalSettled = onValueUpdated(
   }
 );
 
+// --- NEW: Binance API Helpers ---
+async function getBinanceUsdtBalance() {
+  const endpoint = '/api/v3/account';
+  const timestamp = Date.now();
+  const queryString = `timestamp=${timestamp}`;
+  const signature = crypto.createHmac('sha256', binanceSecretKey.value()).update(queryString).digest('hex');
+
+  const proxyUrl = `${proxyVmUrl.value()}${endpoint}?${queryString}&signature=${signature}`;
+
+  const response = await fetch(proxyUrl, {
+    method: 'GET',
+    headers: {
+      'X-MBX-APIKEY': binanceApiKey.value(),
+      'x-binance-proxy-token': binanceProxyToken.value(),
+      'Host': 'api.binance.com'
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('Binance Get Balance Error:', response.status, text);
+    throw new Error(`Binance error: ${text}`);
+  }
+
+  const data = await response.json();
+  const usdtAsset = data.balances.find(b => b.asset === 'USDT');
+  return usdtAsset ? parseFloat(usdtAsset.free) : 0;
+}
+
+async function executeBinanceBuyOrder(usdtAmount) {
+  const endpoint = '/api/v3/order';
+  const timestamp = Date.now();
+  // quoteOrderQty defines how much USDT we want to spend to buy BTC
+  const queryString = `symbol=BTCUSDT&side=BUY&type=MARKET&quoteOrderQty=${usdtAmount}&timestamp=${timestamp}`;
+  const signature = crypto.createHmac('sha256', binanceSecretKey.value()).update(queryString).digest('hex');
+
+  const proxyUrl = `${proxyVmUrl.value()}${endpoint}?${queryString}&signature=${signature}`;
+
+  const response = await fetch(proxyUrl, {
+    method: 'POST',
+    headers: {
+      'X-MBX-APIKEY': binanceApiKey.value(),
+      'x-binance-proxy-token': binanceProxyToken.value(),
+      'Host': 'api.binance.com'
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('Binance Buy Order Error:', response.status, text);
+    throw new Error(`Binance error: ${text}`);
+  }
+
+  const data = await response.json();
+  // data.executedQty is the BTC amount bought
+  return parseFloat(data.executedQty);
+}
+
+// Helper to send email for successful BTC buy
+async function sendUserCryptoDepositEmail(userEmail, userName, copAmount, btcAmount) {
+  if (!userEmail) return;
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: smtpUser.value(),
+      pass: smtpPass.value(),
+    },
+  });
+
+  const mailOptions = {
+    from: smtpUser.value(),
+    to: userEmail,
+    subject: `Deposit Processed - Crypto Wallet Updated`,
+    text: `
+      Hello ${userName || 'User'},
+
+      We have successfully received your deposit of $${copAmount} COP.
+      Your Crypto Wallet has been credited with ${btcAmount} BTC!
+      
+      Log in to Rendimientos.net to see your updated balance.
+      Thank you!
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Crypto deposit confirmation email sent to user: ${userEmail}`);
+  } catch (error) {
+    console.error('User email send error:', error);
+  }
+}
+
 // --- NEW: Bancolombia Webhook ---
 async function sendDepositEmailToAdmin(depositData, matched) {
   const transporter = nodemailer.createTransport({
@@ -772,7 +871,7 @@ async function sendDepositEmailToAdmin(depositData, matched) {
   }
 }
 
-exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass] }, async (req, res) => {
+exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, binanceSecretKey, binanceProxyToken] }, async (req, res) => {
   // Basic token security check
   const secretToken = webhookSecret.value();
   if (req.query.token !== secretToken) {
@@ -849,6 +948,73 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass] }, async (req, res)
       await rtdb.ref(`deposits/all/${newRef.key}`).set(depositData);
 
       await sendDepositEmailToAdmin(depositData, true);
+
+      // --- NEW: Crypto Buy Logic ---
+      const numericAmount = parseFloat(parsedAmount.replace(/,/g, ''));
+      try {
+        const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,tether&vs_currencies=usd,cop');
+        if (cgRes.ok) {
+          const cgData = await cgRes.json();
+          const usdtCop = cgData?.tether?.cop;
+          if (usdtCop) {
+            const requiredUsdt = numericAmount / usdtCop;
+            console.log(`Required USDT for $${numericAmount} COP at ${usdtCop}: ${requiredUsdt} USDT`);
+
+            if (requiredUsdt < 10) {
+              console.log('Deposit below 10 USDT threshold. Skipping crypto buy.');
+            } else {
+              const availableUsdt = await getBinanceUsdtBalance();
+              console.log(`Available USDT on Binance: ${availableUsdt}`);
+
+              if (availableUsdt < requiredUsdt) {
+                console.warn('Insufficient USDT liquidity on Binance.');
+                // Send warning to Admin
+                const transporter = nodemailer.createTransport({
+                  service: 'gmail',
+                  auth: { user: smtpUser.value(), pass: smtpPass.value() }
+                });
+                await transporter.sendMail({
+                  from: smtpUser.value(),
+                  to: adminEmail.value(),
+                  subject: `URGENT: Insufficient Binance Liquidity`,
+                  text: `A deposit of $${numericAmount} COP requires ~${requiredUsdt} USDT, but Binance only has ${availableUsdt} USDT.`
+                });
+              } else {
+                console.log('Sufficient liquidity. Executing MARKET BUY...');
+                // Execute Binance Buy (format to 2 decimals usually for quoteOrderQty)
+                const formattedUsdt = Math.floor(requiredUsdt * 100) / 100;
+                const btcBought = await executeBinanceBuyOrder(formattedUsdt);
+                console.log(`Bought ${btcBought} BTC`);
+
+                // Update Crypto Balance
+                const cryptoBalanceRef = rtdb.ref(`cryptoBalances/${matchedUid}`);
+                const snap = await cryptoBalanceRef.once('value');
+                const currentBalance = snap.val() ? parseFloat(snap.val().balance || 0) : 0;
+                const newBalance = currentBalance + btcBought;
+                await cryptoBalanceRef.set({
+                  balance: newBalance,
+                  updatedAt: admin.database.ServerValue.TIMESTAMP
+                });
+
+                // Notify User
+                try {
+                  const userRecord = await admin.auth().getUser(matchedUid);
+                  if (userRecord && userRecord.email) {
+                    await sendUserCryptoDepositEmail(userRecord.email, parsedName, parsedAmount, btcBought);
+                  }
+                } catch (userErr) {
+                  console.error('Error fetching user email for notification:', userErr);
+                }
+              }
+            }
+          } else {
+            console.error('CoinGecko missing tether to cop conversion.');
+          }
+        }
+      } catch (cryptoErr) {
+        console.error('Error in crypto buy process:', cryptoErr);
+      }
+
     } else {
       console.log(`Unassigned incoming deposit for name: ${parsedName}`);
       depositData.adminNotified = false;
@@ -863,5 +1029,14 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass] }, async (req, res)
   } catch (err) {
     console.error('Firebase save error:', err);
     res.status(500).send('Database error');
+  }
+});
+exports.testBinanceProxy = onRequest({ secrets: [binanceApiKey, binanceSecretKey, binanceProxyToken] }, async (req, res) => {
+  try {
+    const balance = await getBinanceUsdtBalance();
+    res.status(200).send(`Proxy connection successful! Available USDT balance: ${balance}`);
+  } catch (error) {
+    console.error('Test Proxy Error:', error);
+    res.status(500).send(`Error testing proxy: ${error.message}`);
   }
 });
