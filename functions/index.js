@@ -779,7 +779,12 @@ async function executeBinanceBuyOrder(usdtAmount) {
 
   const data = await response.json();
   // data.executedQty is the BTC amount bought
-  return parseFloat(data.executedQty);
+  return {
+    btcBought: parseFloat(data.executedQty),
+    usdtSpent: parseFloat(data.cummulativeQuoteQty),
+    orderId: data.orderId,
+    fills: data.fills
+  };
 }
 
 // Helper to send email for successful BTC buy
@@ -956,6 +961,7 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
         if (cgRes.ok) {
           const cgData = await cgRes.json();
           const usdtCop = cgData?.tether?.cop;
+          const btcUsdt = cgData?.bitcoin?.usd;
           if (usdtCop) {
             const requiredUsdt = numericAmount / usdtCop;
             console.log(`Required USDT for $${numericAmount} COP at ${usdtCop}: ${requiredUsdt} USDT`);
@@ -983,8 +989,20 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
                 console.log('Sufficient liquidity. Executing MARKET BUY...');
                 // Execute Binance Buy (format to 2 decimals usually for quoteOrderQty)
                 const formattedUsdt = Math.floor(requiredUsdt * 100) / 100;
-                const btcBought = await executeBinanceBuyOrder(formattedUsdt);
+                const buyResult = await executeBinanceBuyOrder(formattedUsdt);
+                const btcBought = buyResult.btcBought;
                 console.log(`Bought ${btcBought} BTC`);
+
+                // Update Deposit with buy info
+                const marketBuyInfo = {
+                  btcBought: buyResult.btcBought,
+                  usdtSpent: buyResult.usdtSpent,
+                  orderId: buyResult.orderId,
+                  usdtCopPrice: usdtCop,
+                  btcUsdtPrice: btcUsdt
+                };
+                await newRef.update({ marketBuy: marketBuyInfo });
+                await rtdb.ref(`deposits/all/${newRef.key}`).update({ marketBuy: marketBuyInfo });
 
                 // Update Crypto Balance
                 const cryptoBalanceRef = rtdb.ref(`cryptoBalances/${matchedUid}`);

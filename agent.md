@@ -59,7 +59,7 @@ The application defines the following 2nd Gen HTTP/Eventarc Cloud Functions:
 
 ### Bancolombia Deposit Webhook
 * **`bancolombiaWebhook`**: HTTP endpoint secured by `WEBHOOK_SECRET` query parameter. Receives forwarded Bancolombia email alerts, parses them via regex to extract depositor name, amount, date, and time. Matches deposits to users by comparing the first two words of the parsed name against RTDB `balances` names (case-insensitive). Matched deposits go to `deposits/{uid}` + `deposits/all/{key}`, unmatched go to `unassignedDeposits`. 
-  * **Automated Crypto Purchases**: For matched deposits, evaluates the COP amount against a 10 USDT equivalent threshold (using CoinGecko). If met, it securely checks Binance USDT liquidity via the Proxy VM. If sufficient, a `MARKET BUY` for `BTCUSDT` is executed. The resulting BTC is added to `cryptoBalances/{uid}` and both user and admin are emailed. If insufficient liquidity or CoinGecko fails, admin receives an urgent warning.
+  * **Automated Crypto Purchases**: For matched deposits, evaluates the COP amount against a 10 USDT equivalent threshold (using CoinGecko for both `USDT/COP` and `BTC/USDT` prices). If met, it securely checks Binance USDT liquidity via the Proxy VM. If sufficient, a `MARKET BUY` for `BTCUSDT` is executed. The resulting BTC is added to `cryptoBalances/{uid}` along with trade details saved in the deposit record, and both user and admin are emailed. If insufficient liquidity or CoinGecko fails, admin receives an urgent warning.
 
 ## 🗄️ Realtime Database Schema
 ```
@@ -83,7 +83,8 @@ rendimientos-5dbb9-default-rtdb/
 │   │   └── {depositId}/
 │   │       ├── parsedName, amount, date, time
 │   │       ├── rawEmail, timestamp, status ('settled')
-│   │       └── userNotified
+│   │       ├── userNotified
+│   │       └── marketBuy        # (Optional) {btcBought, usdtSpent, orderId, usdtCopPrice, btcUsdtPrice}
 │   └── all/                    # Master log of all matched deposits
 │       └── {depositId}/
 ├── unassignedDeposits/         # Deposits that couldn't be matched to a user
@@ -152,7 +153,7 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
   - MetaMask / Ethereum (via `ethers` + custom `useMetaMask` hook)
   - QR Code scanning (`html5-qrcode`) and generation (`qrcode.react`)
   - Bolt11 invoice decoding (`bolt11`)
-- **Notification System:** Modal-based notification history (replaced browser `alert()` dialogs). Bell icon UI for both user deposit notifications and admin unassigned deposit alerts.
+- **Notification System:** Modal-based notification history (replaced browser `alert()` dialogs). Bell icon UI for both user deposit notifications and admin unassigned deposit alerts. For automated crypto purchases, the UI presents key metrics (BTC Bought, BTC/USDT price, USDT/COP price) while keeping backend-only data (like Order ID and USDT spent) hidden.
 - **Build & Deploy:** `npm run build` in `my-spa/` runs `next build` then syncs `.next/` to `functions/.next/` via `rsync`. Then `firebase deploy` from root.
 
 ## 📦 Deployment & Commands
