@@ -1,7 +1,7 @@
 {
-  "/icon.png/route": "/icon.png",
+  "/_not-found/page": "/_not-found",
   "/api/tapdProxy/[...path]/route": "/api/tapdProxy/[...path]",
   "/api/lndProxy/[...path]/route": "/api/lndProxy/[...path]",
-  "/_not-found/page": "/_not-found",
+  "/icon.png/route": "/icon.png",
   "/page": "/"
 }

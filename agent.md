@@ -153,6 +153,8 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
   - MetaMask / Ethereum (via `ethers` + custom `useMetaMask` hook)
   - QR Code scanning (`html5-qrcode`) and generation (`qrcode.react`)
   - Bolt11 invoice decoding (`bolt11`)
+  - **Real-time Price WebSockets:** Connects directly to Binance (`wss://stream.binance.com:9443/ws/btcusdt@ticker`) for live BTC/USDT pricing, efficiently replacing legacy REST API polling.
+- **Data Aggregation:** The BTC Wallet UI displays a dynamically summed balance (`cryptoBalance` from automated purchases + `BTCBalance` from synced spreadsheet). User "Movements" natively merge spreadsheet records with newly mapped RTDB automated deposit objects.
 - **Notification System:** Modal-based notification history (replaced browser `alert()` dialogs). Bell icon UI for both user deposit notifications and admin unassigned deposit alerts. For automated crypto purchases, the UI presents key metrics (BTC Bought, BTC/USDT price, USDT/COP price) while keeping backend-only data (like Order ID and USDT spent) hidden.
 - **Build & Deploy:** `npm run build` in `my-spa/` runs `next build` then syncs `.next/` to `functions/.next/` via `rsync`. Then `firebase deploy` from root.
 
@@ -169,5 +171,6 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
 * **Authentication Middleware:** Custom `verifyToken()` middleware ensures only Firebase-authenticated HTTP headers (Bearer token) can access restricted endpoints. Admin checks compare against `ADMIN_UID` defineString param.
 * **Binance API Geoblocking:** Binance API is geoblocked from US-based Cloud Functions. The solution routes signed Binance requests through `lnd-proxy-vm2` to an Umbrel Edge Node running Nginx Proxy Manager, using CoinGecko API (`api.coingecko.com`) for independent BTC/USDT and COP/USDT pricing logic.
 * **Monolithic Page Component:** `my-spa/src/app/page.tsx` is a large (~102KB) single-file component. Consider refactoring into smaller components for maintainability.
-* **RTDB Sync on Login:** Spreadsheet-to-RTDB sync now triggers automatically on user login; the manual admin "Sync with RTDB" button has been removed.
+* **RTDB Sync on Login:** Spreadsheet-to-RTDB sync now triggers automatically on user login; the manual admin "Sync with RTDB" button has been removed. `balances` are explicitly keyed by `uid`.
 * **Deposit Name Matching:** Bancolombia webhook matches deposits using only the first two words of the depositor's name (case-insensitive) against RTDB balance names. Deposits that don't match go to `unassignedDeposits`.
+* **Spreadsheet Query Ranges:** `getMovementsById` targets `Sheet1!A1:H120`. If adding new columns to the sheet, ensure this range is extended in `functions/index.js`.

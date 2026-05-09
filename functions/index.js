@@ -126,17 +126,21 @@ exports.syncSheetsToRTDB = onRequest((req, res) => {
       };
 
       balancesData.forEach((item) => {
-        if (item.id) {
-          rtdbData.balances[item.id] = item;
+        const uid = item.uid || item.UID || item.Uid;
+        const key = uid || item.id;
+        if (key) {
+          rtdbData.balances[key] = item;
         }
       });
 
       movementsData.forEach((item) => {
-        if (item.id && rtdbData.balances[item.id]) {
-          if (!rtdbData.balances[item.id].movements) {
-            rtdbData.balances[item.id].movements = [];
+        const uid = item.uid || item.UID || item.Uid;
+        const key = uid || item.id;
+        if (key && rtdbData.balances[key]) {
+          if (!rtdbData.balances[key].movements) {
+            rtdbData.balances[key].movements = [];
           }
-          rtdbData.balances[item.id].movements.push(item);
+          rtdbData.balances[key].movements.push(item);
         }
       });
       console.log('Data restructured.');
@@ -316,7 +320,7 @@ exports.getMovementsById = onRequest((req, res) => {
 
     try {
       const spreadsheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-      const range = 'Sheet1!A1:G120'; // Adjust if movements are in a different sheet/range
+      const range = 'Sheet1!A1:H120'; // Adjust if movements are in a different sheet/range
 
       const filteredData = await fetchSpreadsheetDataById(spreadsheetId, range, id);
 

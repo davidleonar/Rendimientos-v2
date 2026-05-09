@@ -2,23 +2,18 @@
   "rules": {
     ".read": false,
     ".write": false,
-
     "balances": {
-      "$id": {
-      ".read": "auth != null && ($id === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
-      ".write": false
-      }
+      ".read": true,
+      ".write": true
     },
-
     "withdrawals": {
-      ".read": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",  // Allow admin to read entire node
-      ".write": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",  // Allow admin to write entire node
+      ".read": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
+      ".write": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
       "$uid": {
-        ".read": "auth != null && $uid === auth.uid",  // Users read own
+        ".read": "auth != null && $uid === auth.uid",
         ".write": "auth != null && $uid === auth.uid"
       }
     },
-
     "deposits": {
       ".read": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
       ".write": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
@@ -27,12 +22,10 @@
         ".write": "auth != null && $uid === auth.uid"
       }
     },
-
     "unassignedDeposits": {
       ".read": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'",
       ".write": "auth != null && auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1'"
     },
-
     "userSavings": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
@@ -41,7 +34,6 @@
         }
       }
     },
-
     "cryptoBalances": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1')",
