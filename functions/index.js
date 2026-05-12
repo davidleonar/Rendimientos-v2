@@ -115,7 +115,7 @@ exports.syncSheetsToRTDB = onRequest((req, res) => {
       // 2. Fetch Movements
       console.log('Fetching movements data...');
       const movementsSheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-      const movementsRange = 'Sheet1!A1:G120';
+      const movementsRange = 'Sheet1!A1:H120';
       const movementsData = await fetchAllSpreadsheetData(movementsSheetId, movementsRange);
       console.log(`Fetched ${movementsData.length} movements.`);
 
@@ -593,18 +593,26 @@ async function sendWithdrawalEmail(withdrawalData, type) {
     from: smtpUser.value(),
     to: adminEmail.value(),
     subject: `Rendimientos.net - New ${type} Withdrawal Request`,
-    text: `
-      User ID: ${withdrawalData.userId || 'N/A'}
-      Name: ${withdrawalData.name || 'N/A'}
-      Email: ${withdrawalData.userEmail || 'N/A'}
-      Amount: ${withdrawalData.amount || 'N/A'}
-      Option: ${withdrawalData.option || 'N/A'}
-      Bank Data: ${withdrawalData.bankData || 'N/A'}
-      Bank Name: ${withdrawalData.bankName || 'N/A'}
-      Country: ${withdrawalData.country || 'N/A'}
-      Timestamp: ${new Date().toISOString()}
-
-      Full Details: ${JSON.stringify(withdrawalData, null, 2)}
+    html: `
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
+      </div>
+      <p><strong>Se ha recibido una solicitud de retiro!</strong></p>
+      <ul>
+        <li><strong>User ID:</strong> ${withdrawalData.userId || 'N/A'}</li>
+        <li><strong>Name:</strong> ${withdrawalData.name || 'N/A'}</li>
+        <li><strong>Email:</strong> ${withdrawalData.userEmail || 'N/A'}</li>
+        <li><strong>Amount:</strong> ${withdrawalData.amount || 'N/A'}</li>
+        <li><strong>Option:</strong> ${withdrawalData.option || 'N/A'}</li>
+        <li><strong>Requested BTC:</strong> ${withdrawalData.requestedBtcAmount || 'N/A'}</li>
+        <li><strong>Fee (1%):</strong> ${withdrawalData.fee || 'N/A'}</li>
+        <li><strong>Total BTC to Deduct:</strong> ${withdrawalData.totalBtcToDeduct || 'N/A'}</li>
+        <li><strong>Bank Data:</strong> ${withdrawalData.bankData || 'N/A'}</li>
+        <li><strong>Bank Name:</strong> ${withdrawalData.bankName || 'N/A'}</li>
+        <li><strong>Country:</strong> ${withdrawalData.country || 'N/A'}</li>
+        <li><strong>Timestamp:</strong> ${new Date().toISOString()}</li>
+      </ul>
+      <p><strong>¡Favor procesar el retiro prontamente!</strong></p>
     `,
   };
 
@@ -635,19 +643,24 @@ async function sendUserWithdrawalEmail(withdrawalData) {
   const mailOptions = {
     from: smtpUser.value(),
     to: withdrawalData.userEmail,
-    subject: `Transfer confirmation from Rendimientos.net`,
-    text: `
-      Hello ${withdrawalData.name || 'User'},
-
-      We have successfully received your withdrawal request!
-      
-      Amount: ${withdrawalData.amount || 'N/A'}
-      Option: ${withdrawalData.option || 'N/A'}
-      Bank Data: ${withdrawalData.bankData || 'N/A'}
-      Bank Name: ${withdrawalData.bankName || 'N/A'}
-      Country: ${withdrawalData.country || 'N/A'}
-
-      We will process it shortly. Thank you!
+    subject: `Rendimientos.net - Tu retiro ha sido enviado!`,
+    html: `
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
+      </div>
+      <p>Hello ${withdrawalData.name || 'User'},</p>
+      <p><strong>Se ha completado tu retiro de COP!</strong></p>
+      <ul>
+        <li><strong>Amount:</strong> ${withdrawalData.amount || 'N/A'}</li>
+        <li><strong>Option:</strong> ${withdrawalData.option || 'N/A'}</li>
+        <li><strong>Requested BTC:</strong> ${withdrawalData.requestedBtcAmount || 'N/A'}</li>
+        <li><strong>Fee (1%):</strong> ${withdrawalData.fee || 'N/A'}</li>
+        <li><strong>Total BTC to Deduct:</strong> ${withdrawalData.totalBtcToDeduct || 'N/A'}</li>
+        <li><strong>Bank Data:</strong> ${withdrawalData.bankData || 'N/A'}</li>
+        <li><strong>Bank Name:</strong> ${withdrawalData.bankName || 'N/A'}</li>
+        <li><strong>Country:</strong> ${withdrawalData.country || 'N/A'}</li>
+      </ul>
+      <p>Pronto recibiras los fondos!</p>
     `,
   };
 
@@ -702,18 +715,19 @@ exports.notifyWithdrawalSettled = onValueUpdated(
       const mailOptions = {
         from: smtpUser.value(),
         to: after.userEmail,
-        subject: `Withdrawal Completed - Rendimientos.net`,
-        text: `
-          Hello ${after.name || 'User'},
-
-          Great news! Your withdrawal request has been successfully COMPLETED.
-          
-          Amount: ${after.amount || 'N/A'}
-          Destination: ${after.bankName || 'N/A'} - ${after.bankData || 'N/A'}
-          
-          The funds should now be fully transferred. Please check your bank account to verify!
-          
-          Thank you for using Rendimientos.net!
+        subject: `Retiro Completado - Rendimientos.net`,
+        html: `
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
+          </div>
+          <p>Hola ${after.name || 'User'},</p>
+          <p><strong>¡Excelentes noticias! Tu retiro se ha completado con éxito.</strong></p>
+          <ul>
+            <li><strong>Cantidad:</strong> ${after.amount || 'N/A'}</li>
+            <li><strong>Destino:</strong> ${after.bankName || 'N/A'} - ${after.bankData || 'N/A'}</li>
+          </ul>
+          <p>Los fondos ya deberían haberse transferido. Por favor, revisa tu cuenta bancaria para verificar!</p>
+          <p>Gracias por usar Rendimientos.net!</p>
         `,
       };
 

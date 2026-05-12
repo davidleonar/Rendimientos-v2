@@ -4,7 +4,11 @@
   },
   "hosting": {
     "public": "functions/public",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "redirects": [
       {
         "source": "**/*.php",
@@ -43,7 +47,7 @@
     "cleanUrls": true,
     "headers": [
       {
-        "source": "/favicon.ico",
+        "source": "/apple-touch-icon.png",
         "headers": [
           {
             "key": "Cache-Control",
@@ -66,7 +70,7 @@
     {
       "source": "functions",
       "codebase": "default",
-      "runtime":"nodejs22",
+      "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".git",
