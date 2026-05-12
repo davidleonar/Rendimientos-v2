@@ -16,6 +16,7 @@
   "main": "index.js",
   "dependencies": {
     "@google-cloud/firestore": "^7.5.0",
+    "@google-cloud/functions-framework": "^5.0.2",
     "cors": "^2.8.5",
     "ethers": "^6.15.0",
     "firebase-admin": "^13.7.0",
@@ -28,5 +29,13 @@
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"
   },
-  "private": true
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@firebase/util",
+      "protobufjs",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
 }

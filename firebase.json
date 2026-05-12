@@ -47,7 +47,7 @@
     "cleanUrls": true,
     "headers": [
       {
-        "source": "/apple-touch-icon.png",
+        "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico|woff|woff2|ttf|eot)",
         "headers": [
           {
             "key": "Cache-Control",
@@ -56,7 +56,7 @@
         ]
       },
       {
-        "source": "/(.*).css",
+        "source": "**/*.css",
         "headers": [
           {
             "key": "Cache-Control",
