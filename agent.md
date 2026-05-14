@@ -6,7 +6,8 @@
 - **RTDB URL:** `https://rendimientos-5dbb9-default-rtdb.firebaseio.com/`
 - **Application Frontend:** Next.js 15 (App Router + Pages Router hybrid), deployed serverless via Firebase Functions.
 - **Frontend SPA Source:** `my-spa/` directory — a standalone Next.js project (TypeScript, TailwindCSS 3) that builds into `functions/.next/`.
-- **Backend Stack:** Node.js v22 (Cloud Functions 2nd Gen), Google Sheets Data Sync, Firebase Realtime Database (RTDB), Firebase Authentication.
+- **Backend Stack:** Node.js v22 (Cloud Functions 2nd Gen), Firebase Realtime Database (RTDB), Firebase Authentication.
+- **Package Manager:** `pnpm` (used in both `functions/` and `my-spa/`).
 - **Admin UID:** `5XgksHrgmyeGqqKFYGVjQVM0KGl1` (hardcoded in RTDB rules and referenced via `ADMIN_UID` defineString param in functions).
 
 ## 📂 Repository Structure
@@ -16,7 +17,7 @@ my-project/
 ├── firebase.json               # Hosting rewrites, functions config
 ├── database.rules.json         # RTDB security rules
 ├── functions/
-│   ├── index.js                # All Cloud Functions (868 lines)
+│   ├── index.js                # All Cloud Functions (~1057 lines)
 │   ├── package.json            # Node 22, firebase-functions v7, nodemailer, googleapis, ethers, next 15
 │   ├── serviceAccountKey.json  # Google Sheets API auth
 │   ├── .env / .env.local       # Environment config
@@ -46,16 +47,19 @@ The application defines the following 2nd Gen HTTP/Eventarc Cloud Functions:
 * **`nextServer`**: Serves the primary Next.js web application. Must explicitly have memory set (`512MiB`) to prevent SSR / Image optimization memory leak crashes (OOM at `256MiB`).
 
 ### Data Sync
-* **`getDataById`** / **`getMovementsById`**: HTTP endpoints that securely fetch balance and movement data directly from specific Google Spreadsheets. Include admin bypass via `ADMIN_UID` comparison and UID-based row filtering for regular users.
-* **`syncSheetsToRTDB`**: Auth-required function that pulls balances and movements from two Google Spreadsheets and populates the `balances` node in RTDB. Restructures data by ID and nests movements under each user's balance. Triggered automatically on user login (no longer requires manual admin button).
+* **`getDataById`**: HTTP endpoint that securely fetches balance data from RTDB. Includes admin bypass via `ADMIN_UID` comparison and UID-based filtering for regular users.
+* ~~**`syncSheetsToRTDB`**~~: **DEPRECATED & REMOVED.** Google Sheets is no longer the source of truth. Historical movements were migrated to native RTDB `/deposits` and `/withdrawals` nodes. RTDB is now the single source of truth for all balance and transaction data.
 
 ### LND / Taproot Proxies
 * **`lndProxy`**: Secure proxy forwarding JSON requests to the Main Lightning Node using `MAIN_LND_MACAROON` secret. Supports GET/POST. Blocks GET on `/v1/invoices`. Uses `x-forwarded-url` header fallback for path resolution.
 * **`tapdProxy`**: Secure proxy forwarding to the Edge Taproot Assets node using `EDGE_TAPD_MACAROON` secret. Supports GET/POST/DELETE. Requires Firebase auth (`verifyToken`).
 
+### Balance Update Triggers
+* **`onDepositSettled`**: `onValueWritten` trigger on `deposits/{uid}/{depositId}`. When a deposit's status changes to `'settled'`, atomically increments `balances/{uid}/BTCbalance` using a transaction based on `marketBuy.btcBought`. Also updates `totalCopInvested` and recomputes `avgBuyPrice` (weighted average buy price in COP/BTC).
+* **`notifyWithdrawalSettled`**: `onValueWritten` trigger on `withdrawals/{uid}/{requestId}`. When status changes to `'settled'`, atomically deducts `totalBtcToDeduct` from `balances/{uid}/BTCbalance` using a transaction, proportionally reduces `totalCopInvested`, recomputes `avgBuyPrice`, then sends settlement confirmation email to the user.
+
 ### Withdrawal System (Email Notifications via `nodemailer`)
 * **`notifyGlobalWithdrawal`**: Eventarc-triggered on `withdrawals/{uid}/{requestId}` creation in RTDB. Sends admin notification email AND user confirmation email.
-* **`notifyWithdrawalSettled`**: Eventarc-triggered on `withdrawals/{uid}/{requestId}` update. Fires only when `status` changes to `'settled'`, sends settlement confirmation to the user's email.
 
 ### Bancolombia Deposit Webhook
 * **`bancolombiaWebhook`**: HTTP endpoint secured by `WEBHOOK_SECRET` query parameter. Receives forwarded Bancolombia email alerts, parses them via regex to extract depositor name, amount, date, and time. Matches deposits to users by comparing the first two words of the parsed name against RTDB `balances` names (case-insensitive). Matched deposits go to `deposits/{uid}` + `deposits/all/{key}`, unmatched go to `unassignedDeposits`. 
@@ -65,28 +69,29 @@ The application defines the following 2nd Gen HTTP/Eventarc Cloud Functions:
 ```
 rendimientos-5dbb9-default-rtdb/
 ├── balances/
-│   └── {uid}/                  # User balance data (synced from Spreadsheets)
-│       ├── id, name, uid, ...  # Balance fields from spreadsheet
-│       └── movements/[]        # Array of movement records
-├── cryptoBalances/
-│   └── {uid}/                  # Automated BTC wallet balances
-│       ├── balance             # Total BTC owned
-│       └── updatedAt           # Timestamp of last buy
-├── withdrawals/
-│   └── {uid}/
-│       └── {requestId}/        # Withdrawal request data
-│           ├── userId, name, userEmail, amount, option
-│           ├── bankData, bankName, country
-│           └── status           # 'pending' → 'settled'
+│   └── {id}/                   # User balance data (id = Google UID or National ID)
+│       ├── id, name, uid, ...  # Balance fields
+│       ├── BTCbalance          # Authoritative BTC balance (atomically updated by Cloud Functions)
+│       ├── totalCopInvested    # Total COP currently invested (reduced proportionally on withdrawal)
+│       └── avgBuyPrice         # Weighted average buy price (COP/BTC) = totalCopInvested / BTCbalance
 ├── deposits/
-│   ├── {uid}/                  # Matched Bancolombia deposits per user
+│   ├── {id}/                   # All deposits per user (Bancolombia webhook + migrated historical "Compra")
 │   │   └── {depositId}/
-│   │       ├── parsedName, amount, date, time
-│   │       ├── rawEmail, timestamp, status ('settled')
+│   │       ├── uid, depositId, parsedName, saldoCop
+│   │       ├── date, time, timestamp, status ('settled')
 │   │       ├── userNotified
-│   │       └── marketBuy        # (Optional) {btcBought, usdtSpent, orderId, usdtCopPrice, btcUsdtPrice}
+│   │       └── marketBuy        # {btcBought, usdtCopPrice, btcUsdtPrice}
 │   └── all/                    # Master log of all matched deposits
 │       └── {depositId}/
+├── withdrawals/
+│   └── {id}/
+│       └── {requestId}/        # Withdrawal request data
+│           ├── uid, requestId, saldoCop, totalBtcToDeduct
+│           ├── option, status ('pending' → 'settled')
+│           └── quote            # {usdtCop, btcUsdt}
+├── users_directory/
+│   └── {id}/                   # Maps both Google UIDs and National IDs to names
+│       └── name                # For admin lookup of non-Google users
 ├── unassignedDeposits/         # Deposits that couldn't be matched to a user
 │   └── {depositId}/
 │       ├── parsedName, amount, date, time
@@ -96,6 +101,8 @@ rendimientos-5dbb9-default-rtdb/
     └── {uid}/
         └── {txHash}/           # Write-once savings records (validated: userId === $uid)
 ```
+
+> **Note:** `cryptoBalances/` is deprecated. All BTC balance data is now consolidated under `balances/{id}/BTCbalance`, atomically managed by `onDepositSettled` and `notifyWithdrawalSettled` Cloud Function triggers.
 
 ## 🔐 RTDB Security Rules (`database.rules.json`)
 - **`balances/{id}`**: Read by owner or admin. Write: disabled (server-managed).
@@ -154,14 +161,14 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
   - QR Code scanning (`html5-qrcode`) and generation (`qrcode.react`)
   - Bolt11 invoice decoding (`bolt11`)
   - **Real-time Price WebSockets:** Connects directly to Binance (`wss://stream.binance.com:9443/ws/btcusdt@ticker`) for live BTC/USDT pricing, efficiently replacing legacy REST API polling.
-- **Data Aggregation:** The BTC Wallet UI displays a dynamically summed balance (`cryptoBalance` from automated purchases + `BTCBalance` from synced spreadsheet). User "Movements" natively merge spreadsheet records with newly mapped RTDB automated deposit objects.
-- **Notification System:** Modal-based notification history (replaced browser `alert()` dialogs). Bell icon UI for both user deposit notifications and admin unassigned deposit alerts. For automated crypto purchases, the UI presents key metrics (BTC Bought, BTC/USDT price, USDT/COP price) while keeping backend-only data (like Order ID and USDT spent) hidden.
-- **Build & Deploy:** `npm run build` in `my-spa/` runs `next build` then syncs `.next/` to `functions/.next/` via `rsync`. Then `firebase deploy` from root.
+- **Data Aggregation:** The BTC Wallet UI displays the authoritative `BTCbalance` from RTDB (`balances/{id}/BTCbalance`), computed atomically by Cloud Function triggers. The legacy `cryptoBalances` and spreadsheet-based `movements` have been fully deprecated.
+- **Unified Activity Feed:** The notification bell modal combines all `deposits` and `withdrawals` for the user into a single chronological feed, sorted by timestamp descending. Displays `saldoCop`, market buy details (BTC bought, BTC/USDT price, USDT/COP price), and withdrawal receipts.
+- **Build & Deploy:** `pnpm build` in `my-spa/` runs `next build` then syncs `.next/` to `functions/.next/` via `rsync`. Then `firebase deploy` from root.
 
 ## 📦 Deployment & Commands
 - **GCP Authentication:** Use `gcloud auth application-default login` to grant MCP/CLI tools access to the project.
-- **Build Frontend:** `cd my-spa && npm run build` (builds Next.js and syncs `.next/` to `functions/.next/`).
-- **Deploying All:** `cd my-spa && npm run deploy` (builds + `firebase deploy` from root).
+- **Build Frontend:** `cd my-spa && pnpm build` (builds Next.js and syncs `.next/` to `functions/.next/`).
+- **Deploying All:** `cd my-spa && pnpm deploy` (builds + `firebase deploy` from root).
 - **Deploying Functions Only:** `firebase deploy --only functions:<functionName>` from the project root. (e.g. `firebase deploy --only functions:nextServer`).
 - **VM Maintenance:** `gcloud compute ssh lnd-proxy-vm2 --zone=us-central1-a` to access the proxy. Package updates (security updates for Docker, systemd, networking) should be run periodically.
 
@@ -170,7 +177,7 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
 * **Service Accounts:** Google Sheets API calls rely on the `--keyFile='./serviceAccountKey.json'` strategy. Verify this file exists during deployment setup.
 * **Authentication Middleware:** Custom `verifyToken()` middleware ensures only Firebase-authenticated HTTP headers (Bearer token) can access restricted endpoints. Admin checks compare against `ADMIN_UID` defineString param.
 * **Binance API Geoblocking:** Binance API is geoblocked from US-based Cloud Functions. The solution routes signed Binance requests through `lnd-proxy-vm2` to an Umbrel Edge Node running Nginx Proxy Manager, using CoinGecko API (`api.coingecko.com`) for independent BTC/USDT and COP/USDT pricing logic.
-* **Monolithic Page Component:** `my-spa/src/app/page.tsx` is a large (~102KB) single-file component. Consider refactoring into smaller components for maintainability.
-* **RTDB Sync on Login:** Spreadsheet-to-RTDB sync now triggers automatically on user login; the manual admin "Sync with RTDB" button has been removed. `balances` are explicitly keyed by `uid`.
+* **Monolithic Page Component:** `my-spa/src/app/page.tsx` is a large (~112KB) single-file component. Consider refactoring into smaller components for maintainability.
+* **RTDB as Single Source of Truth:** Historical spreadsheet movements were migrated to native `/deposits` and `/withdrawals` nodes. `syncSheetsToRTDB` has been removed. The `BTCbalance` field in `/balances/{id}` is the authoritative BTC balance and is managed atomically by Cloud Function triggers (`onDepositSettled`, `notifyWithdrawalSettled`).
+* **Identity Handling:** Both Google UIDs and National IDs (cédulas) are used uniformly as keys in RTDB (`/balances/{id}`, `/deposits/{id}`, etc.). The `/users_directory/{id}/name` node provides an admin-searchable index for non-Google users.
 * **Deposit Name Matching:** Bancolombia webhook matches deposits using only the first two words of the depositor's name (case-insensitive) against RTDB balance names. Deposits that don't match go to `unassignedDeposits`.
-* **Spreadsheet Query Ranges:** `getMovementsById` targets `Sheet1!A1:H120`. If adding new columns to the sheet, ensure this range is extended in `functions/index.js`.

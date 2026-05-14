@@ -11,7 +11,7 @@ const url = require('url');
 const crypto = require('crypto');
 
 const { defineString, defineSecret } = require('firebase-functions/params');
-const { onValueCreated, onValueUpdated } = require('firebase-functions/v2/database');
+const { onValueCreated, onValueUpdated, onValueWritten } = require('firebase-functions/v2/database');
 //const { https: { onRequest } } = require('firebase-functions/v2');
 const { onRequest } = require('firebase-functions/v2/https');
 
@@ -97,68 +97,6 @@ async function fetchAllSpreadsheetData(spreadsheetId, range) {
   }
 }
 
-exports.syncSheetsToRTDB = onRequest((req, res) => {
-  cors(req, res, async () => {
-    // Verify token (auth required)
-    if (!(await verifyToken(req, res))) return;
-
-
-    console.log('syncSheetsToRTDB function started.');
-    try {
-      // 1. Fetch Balances
-      console.log('Fetching balances data...');
-      const balancesSheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
-      const balancesRange = 'Sheet1!A1:G50';
-      const balancesData = await fetchAllSpreadsheetData(balancesSheetId, balancesRange);
-      console.log(`Fetched ${balancesData.length} balances.`);
-
-      // 2. Fetch Movements
-      console.log('Fetching movements data...');
-      const movementsSheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-      const movementsRange = 'Sheet1!A1:H120';
-      const movementsData = await fetchAllSpreadsheetData(movementsSheetId, movementsRange);
-      console.log(`Fetched ${movementsData.length} movements.`);
-
-      // 3. Restructure data
-      console.log('Restructuring data...');
-      const rtdbData = {
-        balances: {},
-      };
-
-      balancesData.forEach((item) => {
-        const uid = item.uid || item.UID || item.Uid;
-        const key = uid || item.id;
-        if (key) {
-          rtdbData.balances[key] = item;
-        }
-      });
-
-      movementsData.forEach((item) => {
-        const uid = item.uid || item.UID || item.Uid;
-        const key = uid || item.id;
-        if (key && rtdbData.balances[key]) {
-          if (!rtdbData.balances[key].movements) {
-            rtdbData.balances[key].movements = [];
-          }
-          rtdbData.balances[key].movements.push(item);
-        }
-      });
-      console.log('Data restructured.');
-
-      // 4. Write to Realtime Database
-      console.log('Writing data to Realtime Database...');
-      await rtdb.ref('balances').set(rtdbData.balances);    // se puede cambiar a update() si no se quiere sobreescribir todo y solo actualizar
-      console.log('Data successfully written to Realtime Database.');
-
-      res.status(200).json({ message: 'Successfully synced spreadsheet data to Realtime Database.' });
-      console.log('syncSheetsToRTDB function finished successfully.');
-    } catch (error) {
-      console.error('Error syncing data to RTDB:', error);
-      res.status(500).json({ error: 'Internal Server Error' });
-      console.log('syncSheetsToRTDB function finished with error.');
-    }
-  });
-});
 
 // Google Sheets configuration
 const sheets = google.sheets({
@@ -688,17 +626,96 @@ exports.notifyGlobalWithdrawal = onValueCreated(
 );
 
 // Trigger to notify user when withdrawal is settled
-exports.notifyWithdrawalSettled = onValueUpdated(
+
+// Trigger to update BTC balance and avg buy price when a deposit is settled
+exports.onDepositSettled = onValueWritten(
+  {
+    ref: "deposits/{uid}/{depositId}"
+  },
+  async (event) => {
+    const before = event.data.before ? event.data.before.val() || {} : {};
+    const after = event.data.after ? event.data.after.val() || {} : {};
+
+    // Only trigger if status just changed to 'settled' or was created as 'settled'
+    if (after.status === 'settled' && before.status !== 'settled') {
+      const btcBought = after.marketBuy?.btcBought || after.btcBought || 0;
+      if (btcBought > 0) {
+        const uid = event.params.uid;
+        const rtdb = getDatabase();
+
+        // 1. Increment BTCbalance
+        const balanceRef = rtdb.ref(`balances/${uid}/BTCbalance`);
+        await balanceRef.transaction((currentValue) => {
+          const newBalance = (currentValue || 0) + btcBought;
+          return parseFloat(newBalance.toFixed(8));
+        });
+        console.log(`Added ${btcBought} BTC to user ${uid} balance.`);
+
+        // 2. Update totalCopInvested and avgBuyPrice
+        const copAmount = after.saldoCop || parseFloat((after.amount || '0').toString().replace(/,/g, '')) || 0;
+        if (copAmount > 0) {
+          const copRef = rtdb.ref(`balances/${uid}/totalCopInvested`);
+          await copRef.transaction((current) => {
+            return parseFloat(((current || 0) + copAmount).toFixed(2));
+          });
+
+          // Read current values and compute avgBuyPrice
+          const balSnap = await rtdb.ref(`balances/${uid}`).once('value');
+          const bal = balSnap.val() || {};
+          const totalCop = bal.totalCopInvested || 0;
+          const totalBtc = bal.BTCbalance || 0;
+          const avg = totalBtc > 0 ? Math.round(totalCop / totalBtc) : 0;
+          await rtdb.ref(`balances/${uid}/avgBuyPrice`).set(avg);
+          console.log(`Updated avgBuyPrice for ${uid}: ${avg} COP/BTC (totalCopInvested: ${totalCop})`);
+        }
+      }
+    }
+    return null;
+  }
+);
+
+exports.notifyWithdrawalSettled = onValueWritten(
   {
     ref: "withdrawals/{uid}/{requestId}",
     secrets: ['SMTP_PASS']
   },
   async (event) => {
-    const before = event.data.before.val() || {};
-    const after = event.data.after.val() || {};
+    const before = event.data.before ? event.data.before.val() || {} : {};
+    const after = event.data.after ? event.data.after.val() || {} : {};
 
-    // Only trigger if status just changed to 'settled'
+    // Only trigger if status just changed to 'settled' or was created as 'settled'
     if (after.status === 'settled' && before.status !== 'settled') {
+      // Update BTC Balance and avgBuyPrice
+      const btcAmountToDeduct = parseFloat(after.totalBtcToDeduct) || 0;
+      if (btcAmountToDeduct > 0) {
+        const uid = event.params.uid;
+        const rtdb = getDatabase();
+
+        // Read balance BEFORE deduction to compute the fraction
+        const preSnap = await rtdb.ref(`balances/${uid}`).once('value');
+        const preBal = preSnap.val() || {};
+        const btcBefore = (preBal.BTCbalance || 0);
+        const currentCop = preBal.totalCopInvested || 0;
+
+        // Deduct BTC
+        const balanceRef = rtdb.ref(`balances/${uid}/BTCbalance`);
+        await balanceRef.transaction((currentValue) => {
+          const newBalance = (currentValue || 0) - btcAmountToDeduct;
+          return parseFloat(newBalance.toFixed(8));
+        });
+        console.log(`Deducted ${btcAmountToDeduct} BTC from user ${uid} balance.`);
+
+        // Proportionally reduce totalCopInvested
+        if (btcBefore > 0 && currentCop > 0) {
+          const fraction = btcAmountToDeduct / btcBefore;
+          const newCop = parseFloat((currentCop - currentCop * fraction).toFixed(2));
+          const btcAfter = btcBefore - btcAmountToDeduct;
+          const avg = btcAfter > 0 ? Math.round(newCop / btcAfter) : 0;
+          await rtdb.ref(`balances/${uid}/totalCopInvested`).set(newCop);
+          await rtdb.ref(`balances/${uid}/avgBuyPrice`).set(avg);
+          console.log(`Updated avgBuyPrice for ${uid}: ${avg} COP/BTC (totalCopInvested: ${newCop})`);
+        }
+      }
       if (!after.userEmail) {
         console.warn('Skipping settled email: no userEmail provided');
         return null;
