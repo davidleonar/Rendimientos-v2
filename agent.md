@@ -187,3 +187,10 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
 * **RTDB as Single Source of Truth:** Historical spreadsheet movements were migrated to native `/deposits` and `/withdrawals` nodes. `syncSheetsToRTDB` has been removed. The `BTCbalance` field in `/balances/{id}` is the authoritative BTC balance and is managed atomically by Cloud Function triggers (`onDepositSettled`, `notifyWithdrawalSettled`).
 * **Identity Handling:** Both Google UIDs and National IDs (cédulas) are used uniformly as keys in RTDB (`/balances/{id}`, `/deposits/{id}`, etc.). The `/users/{id}` node (previously `users_directory`) provides an admin-searchable index for non-Google users.
 * **Deposit Name Matching:** Bancolombia webhook matches deposits using only the first two words of the depositor's name (case-insensitive) against RTDB balance names. Deposits that don't match go to `unassignedDeposits`.
+
+## ⏳ Pending Features
+- **Move 'BTC Lightning' Deposits:** Move these from under the 'Ahorra Aqui' section to somewhere below the 'BTC Wallet' section. Add more stylish UI, including a thousands separator, an indicator that they are satoshis, and pretty effects when the deposit has arrived. Update the RTDB `deposits` node and `balances` node accordingly. (See: [Implementation Plan](./btc_lightning_deposit_plan.md))
+- **Move 'USDT (Polygon)' Deposits:** Move these from under the 'Ahorra Aqui' section to somewhere below 'BTC Lightning' deposits and add more stylish UI.
+- **Automate BTC Buys from USDT (Polygon):** Investigate how to automate BTC buys when the user deposits USDT over the Polygon network.
+- **Move 'BTC Lightning' Withdrawals:** Move 'BTC Lightning Wallet' withdrawals to somewhere below the 'COP Retiros' section, add more stylish UI, and add pretty effects when the withdrawal is completed. Also, check the user's BTC Balance to ensure the withdrawal does not exceed what the user holds.
+- **Make Admin to see his own BTC Balances in BTC Wallet Section:** Add the BTC balances to the BTC Wallet section in the admin page.
