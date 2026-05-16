@@ -518,7 +518,7 @@ exports.nextServer = onRequest({ memory: '512MiB' }, async (req, res) => {
 });
 
 // Helper to send email
-async function sendWithdrawalEmail(withdrawalData, type) {
+async function sendWithdrawalEmailRequest(withdrawalData, type) {
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -587,13 +587,17 @@ async function sendUserWithdrawalEmail(withdrawalData) {
         <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
       </div>
       <p>Hello ${withdrawalData.name || 'User'},</p>
-      <p><strong>Se ha completado tu retiro de COP!</strong></p>
+      <p><strong>Has solicitado un retiro de BTC!</strong></p>
       <ul>
         <li><strong>Amount:</strong> ${withdrawalData.amount || 'N/A'}</li>
         <li><strong>Option:</strong> ${withdrawalData.option || 'N/A'}</li>
         <li><strong>Requested BTC:</strong> ${withdrawalData.requestedBtcAmount || 'N/A'}</li>
         <li><strong>Fee (1%):</strong> ${withdrawalData.fee || 'N/A'}</li>
         <li><strong>Total BTC to Deduct:</strong> ${withdrawalData.totalBtcToDeduct || 'N/A'}</li>
+        <ul>
+            <li><strong>Precio BTC/USDT:</strong> ${withdrawalData.receipt.btcUsdt || 'N/A'}</li>
+            <li><strong>Precio USDT/COP:</strong> ${withdrawalData.receipt.usdtCop || 'N/A'}</li>
+        </ul>
         <li><strong>Bank Data:</strong> ${withdrawalData.bankData || 'N/A'}</li>
         <li><strong>Bank Name:</strong> ${withdrawalData.bankName || 'N/A'}</li>
         <li><strong>Country:</strong> ${withdrawalData.country || 'N/A'}</li>
@@ -619,7 +623,7 @@ exports.notifyGlobalWithdrawal = onValueCreated(
 
   async (event) => {
     const withdrawal = event.data.val();
-    await sendWithdrawalEmail(withdrawal, 'Global');
+    await sendWithdrawalEmailRequest(withdrawal, 'Global');
     await sendUserWithdrawalEmail(withdrawal);
     return null;  // End cleanly
   }
@@ -836,16 +840,16 @@ async function sendUserCryptoDepositEmail(userEmail, userName, copAmount, btcAmo
   const mailOptions = {
     from: smtpUser.value(),
     to: userEmail,
-    subject: `Deposit Processed - Crypto Wallet Updated`,
-    text: `
-      Hello ${userName || 'User'},
-
-      We have successfully received your deposit of $${copAmount} COP.
-      Your Crypto Wallet has been credited with ${btcAmount} BTC!
-      
-      Log in to Rendimientos.net to see your updated balance.
-      Thank you!
-    `,
+    subject: `Depósito Exitoso - Saldo BTC Actualizado`,
+    html: `
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
+          </div>
+          <p>Hola ${userName || 'User'},</p>
+          <p><strong>¡Hemos recibido exitosamente tu depósito de $${copAmount} COP!</strong></p>
+          <p>¡Tu billetera de BTC ha sido acreditada con ${btcAmount} BTC!</p>
+          <p>Inicia sesión en Rendimientos.net para ver tu saldo actualizado.</p>
+        `,
   };
 
   try {

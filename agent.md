@@ -89,9 +89,11 @@ rendimientos-5dbb9-default-rtdb/
 │           ├── uid, requestId, saldoCop, totalBtcToDeduct
 │           ├── option, status ('pending' → 'settled')
 │           └── quote            # {usdtCop, btcUsdt}
-├── users_directory/
-│   └── {id}/                   # Maps both Google UIDs and National IDs to names
-│       └── name                # For admin lookup of non-Google users
+├── users/                      # Replaced users_directory
+│   └── {id}/                   # Mixed IDs (Google UIDs and National IDs)
+│       ├── name
+│       ├── Full Name           # Copied from balances node
+│       └── GoogleAuthName      # Sourced from Firebase Auth
 ├── unassignedDeposits/         # Deposits that couldn't be matched to a user
 │   └── {depositId}/
 │       ├── parsedName, amount, date, time
@@ -102,7 +104,7 @@ rendimientos-5dbb9-default-rtdb/
         └── {txHash}/           # Write-once savings records (validated: userId === $uid)
 ```
 
-> **Note:** `cryptoBalances/` is deprecated. All BTC balance data is now consolidated under `balances/{id}/BTCbalance`, atomically managed by `onDepositSettled` and `notifyWithdrawalSettled` Cloud Function triggers.
+> **Note:** `cryptoBalances/` is strictly deprecated and should not be relied upon. The UI currently still aggregates it via `cryptoBalance + syncBtcBalance` for legacy display, but backend deduction logic should be stripped from the frontend `handleSettle` to prevent data desyncs or double-deductions.
 
 ## 🔐 RTDB Security Rules (`database.rules.json`)
 - **`balances/{id}`**: Read by owner or admin. Write: disabled (server-managed).
@@ -161,6 +163,10 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
   - QR Code scanning (`html5-qrcode`) and generation (`qrcode.react`)
   - Bolt11 invoice decoding (`bolt11`)
   - **Real-time Price WebSockets:** Connects directly to Binance (`wss://stream.binance.com:9443/ws/btcusdt@ticker`) for live BTC/USDT pricing, efficiently replacing legacy REST API polling.
+- **Withdrawal UX Improvements:** 
+  - Withdrawal submissions dynamically pause to execute an HTTP fetch against Binance APIs at the precise moment of submission, guaranteeing the freshest `btcUsdt` and `usdtCop` quotes are embedded as a `receipt` inside the RTDB withdrawal object.
+  - Submissions feature a `window.confirm` safety dialog.
+  - Timestamps utilize `Date.now()` directly to prevent serialization issues (`NaN`) that occur when passing Firebase's `serverTimestamp()` object wrapper back into number properties.
 - **Data Aggregation:** The BTC Wallet UI displays the authoritative `BTCbalance` from RTDB (`balances/{id}/BTCbalance`), computed atomically by Cloud Function triggers. The legacy `cryptoBalances` and spreadsheet-based `movements` have been fully deprecated.
 - **Unified Activity Feed:** The notification bell modal combines all `deposits` and `withdrawals` for the user into a single chronological feed, sorted by timestamp descending. Displays `saldoCop`, market buy details (BTC bought, BTC/USDT price, USDT/COP price), and withdrawal receipts.
 - **Build & Deploy:** `pnpm build` in `my-spa/` runs `next build` then syncs `.next/` to `functions/.next/` via `rsync`. Then `firebase deploy` from root.
@@ -179,5 +185,5 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
 * **Binance API Geoblocking:** Binance API is geoblocked from US-based Cloud Functions. The solution routes signed Binance requests through `lnd-proxy-vm2` to an Umbrel Edge Node running Nginx Proxy Manager, using CoinGecko API (`api.coingecko.com`) for independent BTC/USDT and COP/USDT pricing logic.
 * **Monolithic Page Component:** `my-spa/src/app/page.tsx` is a large (~112KB) single-file component. Consider refactoring into smaller components for maintainability.
 * **RTDB as Single Source of Truth:** Historical spreadsheet movements were migrated to native `/deposits` and `/withdrawals` nodes. `syncSheetsToRTDB` has been removed. The `BTCbalance` field in `/balances/{id}` is the authoritative BTC balance and is managed atomically by Cloud Function triggers (`onDepositSettled`, `notifyWithdrawalSettled`).
-* **Identity Handling:** Both Google UIDs and National IDs (cédulas) are used uniformly as keys in RTDB (`/balances/{id}`, `/deposits/{id}`, etc.). The `/users_directory/{id}/name` node provides an admin-searchable index for non-Google users.
+* **Identity Handling:** Both Google UIDs and National IDs (cédulas) are used uniformly as keys in RTDB (`/balances/{id}`, `/deposits/{id}`, etc.). The `/users/{id}` node (previously `users_directory`) provides an admin-searchable index for non-Google users.
 * **Deposit Name Matching:** Bancolombia webhook matches deposits using only the first two words of the depositor's name (case-insensitive) against RTDB balance names. Deposits that don't match go to `unassignedDeposits`.
