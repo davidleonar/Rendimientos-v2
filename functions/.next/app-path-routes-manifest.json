@@ -1,6 +1,6 @@
 {
-  "/api/tapdProxy/[...path]/route": "/api/tapdProxy/[...path]",
   "/api/lndProxy/[...path]/route": "/api/lndProxy/[...path]",
+  "/api/tapdProxy/[...path]/route": "/api/tapdProxy/[...path]",
   "/icon.png/route": "/icon.png",
   "/_not-found/page": "/_not-found",
   "/page": "/"

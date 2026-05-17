@@ -167,8 +167,10 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
   - Withdrawal submissions dynamically pause to execute an HTTP fetch against Binance APIs at the precise moment of submission, guaranteeing the freshest `btcUsdt` and `usdtCop` quotes are embedded as a `receipt` inside the RTDB withdrawal object.
   - Submissions feature a `window.confirm` safety dialog.
   - Timestamps utilize `Date.now()` directly to prevent serialization issues (`NaN`) that occur when passing Firebase's `serverTimestamp()` object wrapper back into number properties.
+- **Deposit UI Overhaul:** "COP Depositos" and "BTC Lightning" deposits have been extracted from the legacy "Ahorra Aqui" dropdown into dedicated, premium UI cards below the BTC Wallet. The BTC Lightning deposit flow now writes directly to the unified `deposits` RTDB node to ensure automated balance computation.
 - **Data Aggregation:** The BTC Wallet UI displays the authoritative `BTCbalance` from RTDB (`balances/{id}/BTCbalance`), computed atomically by Cloud Function triggers. The legacy `cryptoBalances` and spreadsheet-based `movements` have been fully deprecated.
-- **Unified Activity Feed:** The notification bell modal combines all `deposits` and `withdrawals` for the user into a single chronological feed, sorted by timestamp descending. Displays `saldoCop`, market buy details (BTC bought, BTC/USDT price, USDT/COP price), and withdrawal receipts.
+- **Admin Unified View:** The admin user (`5XgksHrgmyeGqqKFYGVjQVM0KGl1`) now successfully runs both global administrative RTDB listeners (unassigned deposits, pending withdrawals) and personal listeners simultaneously. This ensures the admin can track global system metrics while also viewing their own personal BTC balances and historic movements.
+- **Unified Activity Feed:** The notification bell modal combines all `deposits` and `withdrawals` for the user into a single chronological feed, sorted by timestamp descending. For the admin, this modal combines system-wide global notifications with their own personal movements. Displays `saldoCop`, market buy details (BTC bought, BTC/USDT price, USDT/COP price), and withdrawal receipts.
 - **Build & Deploy:** `pnpm build` in `my-spa/` runs `next build` then syncs `.next/` to `functions/.next/` via `rsync`. Then `firebase deploy` from root.
 
 ## 📦 Deployment & Commands
@@ -189,8 +191,6 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
 * **Deposit Name Matching:** Bancolombia webhook matches deposits using only the first two words of the depositor's name (case-insensitive) against RTDB balance names. Deposits that don't match go to `unassignedDeposits`.
 
 ## ⏳ Pending Features
-- **Move 'BTC Lightning' Deposits:** Move these from under the 'Ahorra Aqui' section to somewhere below the 'BTC Wallet' section. Add more stylish UI, including a thousands separator, an indicator that they are satoshis, and pretty effects when the deposit has arrived. Update the RTDB `deposits` node and `balances` node accordingly. (See: [Implementation Plan](./btc_lightning_deposit_plan.md))
 - **Move 'USDT (Polygon)' Deposits:** Move these from under the 'Ahorra Aqui' section to somewhere below 'BTC Lightning' deposits and add more stylish UI.
 - **Automate BTC Buys from USDT (Polygon):** Investigate how to automate BTC buys when the user deposits USDT over the Polygon network.
-- **Move 'BTC Lightning' Withdrawals:** Move 'BTC Lightning Wallet' withdrawals to somewhere below the 'COP Retiros' section, add more stylish UI, and add pretty effects when the withdrawal is completed. Also, check the user's BTC Balance to ensure the withdrawal does not exceed what the user holds.
-- **Make Admin to see his own BTC Balances in BTC Wallet Section:** Add the BTC balances to the BTC Wallet section in the admin page.
+- **Move 'BTC Lightning' Withdrawals:** Move 'BTC Lightning Wallet' withdrawals to somewhere below the 'COP Retiros' section, add more stylish UI, and add pretty effects when the withdrawal is completed. Also, check the user's BTC Balance to ensure the withdrawal does not exceed what the user holds and deduct the amount of BTC from the user's BTC Balance.
