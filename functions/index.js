@@ -618,7 +618,8 @@ async function sendUserWithdrawalEmail(withdrawalData) {
 exports.notifyGlobalWithdrawal = onValueCreated(
   {
     ref: "withdrawals/{uid}/{requestId}",
-    secrets: ['SMTP_PASS']  // Pass your secret(s); add more if needed
+    secrets: ['SMTP_PASS'],  // Pass your secret(s); add more if needed
+    memory: '512MiB'
   },
 
   async (event) => {
@@ -634,7 +635,8 @@ exports.notifyGlobalWithdrawal = onValueCreated(
 // Trigger to update BTC balance and avg buy price when a deposit is settled
 exports.onDepositSettled = onValueWritten(
   {
-    ref: "deposits/{uid}/{depositId}"
+    ref: "deposits/{uid}/{depositId}",
+    memory: '512MiB'
   },
   async (event) => {
     const before = event.data.before ? event.data.before.val() || {} : {};
@@ -681,7 +683,8 @@ exports.onDepositSettled = onValueWritten(
 exports.notifyWithdrawalSettled = onValueWritten(
   {
     ref: "withdrawals/{uid}/{requestId}",
-    secrets: ['SMTP_PASS']
+    secrets: ['SMTP_PASS'],
+    memory: '512MiB'
   },
   async (event) => {
     const before = event.data.before ? event.data.before.val() || {} : {};
@@ -860,6 +863,56 @@ async function sendUserCryptoDepositEmail(userEmail, userName, copAmount, btcAmo
   }
 }
 
+// Helper to get prices from CoinGecko with Coinbase fallback
+async function getPrices() {
+  let btcUsdt = null;
+  let usdtCop = null;
+
+  // 1. Try CoinGecko first
+  try {
+    const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,tether&vs_currencies=usd,cop');
+    if (cgRes.ok) {
+      const cgData = await cgRes.json();
+      btcUsdt = cgData?.bitcoin?.usd;
+      usdtCop = cgData?.tether?.cop;
+      if (btcUsdt && usdtCop) {
+        console.log(`Fetched prices from CoinGecko. BTC/USDT: ${btcUsdt}, USDT/COP: ${usdtCop}`);
+        return { btcUsdt, usdtCop, source: 'CoinGecko' };
+      }
+    } else {
+      console.warn(`CoinGecko pricing API returned status: ${cgRes.status}`);
+    }
+  } catch (err) {
+    console.error('Error fetching from CoinGecko:', err);
+  }
+
+  // 2. Fallback to Coinbase API
+  console.log('Attempting fallback to Coinbase API...');
+  try {
+    const btcRes = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot');
+    const rateRes = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=USD');
+
+    if (btcRes.ok && rateRes.ok) {
+      const btcData = await btcRes.json();
+      const rateData = await rateRes.json();
+
+      btcUsdt = parseFloat(btcData?.data?.amount);
+      usdtCop = parseFloat(rateData?.data?.rates?.COP);
+
+      if (btcUsdt && usdtCop) {
+        console.log(`Fetched prices from Coinbase fallback. BTC/USD: ${btcUsdt}, USD/COP: ${usdtCop}`);
+        return { btcUsdt, usdtCop, source: 'Coinbase' };
+      }
+    } else {
+      console.warn(`Coinbase fallback APIs returned error statuses. BTC: ${btcRes.status}, Rates: ${rateRes.status}`);
+    }
+  } catch (err) {
+    console.error('Error fetching from Coinbase fallback:', err);
+  }
+
+  throw new Error('Failed to retrieve price data from both CoinGecko and Coinbase fallback APIs.');
+}
+
 // --- NEW: Bancolombia Webhook ---
 async function sendDepositEmailToAdmin(depositData, matched) {
   const transporter = nodemailer.createTransport({
@@ -872,18 +925,14 @@ async function sendDepositEmailToAdmin(depositData, matched) {
 
   let btcUsdt = 'N/A';
   let usdtCop = 'N/A';
+  let source = 'N/A';
   try {
-    // Cloud Functions in US are geoblocked by Binance.com API. Using CoinGecko as fallback.
-    const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,tether&vs_currencies=usd,cop');
-    if (cgRes.ok) {
-      const cgData = await cgRes.json();
-      btcUsdt = cgData?.bitcoin?.usd || 'N/A';
-      usdtCop = cgData?.tether?.cop || 'N/A';
-    } else {
-      console.error('CoinGecko API error:', cgRes.status, await cgRes.text());
-    }
+    const priceData = await getPrices();
+    btcUsdt = priceData.btcUsdt;
+    usdtCop = priceData.usdtCop;
+    source = priceData.source;
   } catch (e) {
-    console.error('Error fetching prices:', e);
+    console.error('Error fetching prices for admin email:', e);
   }
 
   const statusType = matched ? 'MATCHED' : 'UNASSIGNED';
@@ -901,7 +950,7 @@ async function sendDepositEmailToAdmin(depositData, matched) {
       Time: ${depositData.time || 'N/A'}
       UID Matched: ${depositData.uid || 'N/A'}
 
-      Current Prices (CoinGecko):
+      Current Prices (${source}):
       BTC/USDT: $${btcUsdt}
       COP/USDT: $${usdtCop}
     `,
@@ -909,7 +958,7 @@ async function sendDepositEmailToAdmin(depositData, matched) {
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log(`Admin email sent for deposit update BTC/USDT: ${btcUsdt} COP/USDT: ${usdtCop}`);
+    console.log(`Admin email sent for deposit update BTC/USDT: ${btcUsdt} COP/USDT: ${usdtCop} (via ${source})`);
   } catch (error) {
     console.error('Email send error for deposit:', error);
   }
@@ -977,7 +1026,7 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
     time: parsedTime,
     rawEmail: emailBody,
     timestamp: admin.database.ServerValue.TIMESTAMP,
-    status: 'settled', // it's already a completed deposit
+    status: 'pending', // Initialize as pending
     userNotified: false
   };
 
@@ -993,83 +1042,104 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
 
       await sendDepositEmailToAdmin(depositData, true);
 
-      // --- NEW: Crypto Buy Logic ---
+      // --- Crypto Buy Logic ---
       const numericAmount = parseFloat(parsedAmount.replace(/,/g, ''));
+      let cryptoBuySuccess = false;
+      let marketBuyInfo = null;
+      let btcBought = 0;
+
       try {
-        const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,tether&vs_currencies=usd,cop');
-        if (cgRes.ok) {
-          const cgData = await cgRes.json();
-          const usdtCop = cgData?.tether?.cop;
-          const btcUsdt = cgData?.bitcoin?.usd;
-          if (usdtCop) {
-            const requiredUsdt = numericAmount / usdtCop;
-            console.log(`Required USDT for $${numericAmount} COP at ${usdtCop}: ${requiredUsdt} USDT`);
+        const { btcUsdt, usdtCop, source } = await getPrices();
+        if (usdtCop && btcUsdt) {
+          const requiredUsdt = numericAmount / usdtCop;
+          console.log(`Required USDT for $${numericAmount} COP at ${usdtCop} (via ${source}): ${requiredUsdt} USDT`);
 
-            if (requiredUsdt < 10) {
-              console.log('Deposit below 10 USDT threshold. Skipping crypto buy.');
-            } else {
-              const availableUsdt = await getBinanceUsdtBalance();
-              console.log(`Available USDT on Binance: ${availableUsdt}`);
-
-              if (availableUsdt < requiredUsdt) {
-                console.warn('Insufficient USDT liquidity on Binance.');
-                // Send warning to Admin
-                const transporter = nodemailer.createTransport({
-                  service: 'gmail',
-                  auth: { user: smtpUser.value(), pass: smtpPass.value() }
-                });
-                await transporter.sendMail({
-                  from: smtpUser.value(),
-                  to: adminEmail.value(),
-                  subject: `URGENT: Insufficient Binance Liquidity`,
-                  text: `A deposit of $${numericAmount} COP requires ~${requiredUsdt} USDT, but Binance only has ${availableUsdt} USDT.`
-                });
-              } else {
-                console.log('Sufficient liquidity. Executing MARKET BUY...');
-                // Execute Binance Buy (format to 2 decimals usually for quoteOrderQty)
-                const formattedUsdt = Math.floor(requiredUsdt * 100) / 100;
-                const buyResult = await executeBinanceBuyOrder(formattedUsdt);
-                const btcBought = buyResult.btcBought;
-                console.log(`Bought ${btcBought} BTC`);
-
-                // Update Deposit with buy info
-                const marketBuyInfo = {
-                  btcBought: buyResult.btcBought,
-                  usdtSpent: buyResult.usdtSpent,
-                  orderId: buyResult.orderId,
-                  usdtCopPrice: usdtCop,
-                  btcUsdtPrice: btcUsdt
-                };
-                await newRef.update({ marketBuy: marketBuyInfo });
-                await rtdb.ref(`deposits/all/${newRef.key}`).update({ marketBuy: marketBuyInfo });
-
-                // Update Crypto Balance
-                const cryptoBalanceRef = rtdb.ref(`cryptoBalances/${matchedUid}`);
-                const snap = await cryptoBalanceRef.once('value');
-                const currentBalance = snap.val() ? parseFloat(snap.val().balance || 0) : 0;
-                const newBalance = currentBalance + btcBought;
-                await cryptoBalanceRef.set({
-                  balance: newBalance,
-                  updatedAt: admin.database.ServerValue.TIMESTAMP
-                });
-
-                // Notify User
-                try {
-                  const userRecord = await admin.auth().getUser(matchedUid);
-                  if (userRecord && userRecord.email) {
-                    await sendUserCryptoDepositEmail(userRecord.email, parsedName, parsedAmount, btcBought);
-                  }
-                } catch (userErr) {
-                  console.error('Error fetching user email for notification:', userErr);
-                }
-              }
-            }
+          if (requiredUsdt < 10) {
+            console.log('Deposit below 10 USDT threshold. Skipping crypto buy.');
+            // For deposits below 10 USDT, mark as settled directly (but with 0 BTC bought)
+            await newRef.update({ status: 'settled' });
+            await rtdb.ref(`deposits/all/${newRef.key}`).update({ status: 'settled' });
           } else {
-            console.error('CoinGecko missing tether to cop conversion.');
+            const availableUsdt = await getBinanceUsdtBalance();
+            console.log(`Available USDT on Binance: ${availableUsdt}`);
+
+            if (availableUsdt < requiredUsdt) {
+              console.warn('Insufficient USDT liquidity on Binance.');
+              // Send warning to Admin
+              const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: smtpUser.value(), pass: smtpPass.value() }
+              });
+              await transporter.sendMail({
+                from: smtpUser.value(),
+                to: adminEmail.value(),
+                subject: `URGENT: Insufficient Binance Liquidity`,
+                text: `A deposit of $${numericAmount} COP requires ~${requiredUsdt} USDT, but Binance only has ${availableUsdt} USDT.`
+              });
+            } else {
+              console.log('Sufficient liquidity. Executing MARKET BUY...');
+              // Execute Binance Buy (format to 2 decimals usually for quoteOrderQty)
+              const formattedUsdt = Math.floor(requiredUsdt * 100) / 100;
+              const buyResult = await executeBinanceBuyOrder(formattedUsdt);
+              btcBought = buyResult.btcBought;
+              console.log(`Bought ${btcBought} BTC`);
+
+              marketBuyInfo = {
+                btcBought: buyResult.btcBought,
+                usdtSpent: buyResult.usdtSpent,
+                orderId: buyResult.orderId,
+                usdtCopPrice: usdtCop,
+                btcUsdtPrice: btcUsdt,
+                priceSource: source
+              };
+
+              // Update Crypto Balance
+              const cryptoBalanceRef = rtdb.ref(`cryptoBalances/${matchedUid}`);
+              const snap = await cryptoBalanceRef.once('value');
+              const currentBalance = snap.val() ? parseFloat(snap.val().balance || 0) : 0;
+              const newBalance = currentBalance + btcBought;
+              await cryptoBalanceRef.set({
+                balance: newBalance,
+                updatedAt: admin.database.ServerValue.TIMESTAMP
+              });
+
+              cryptoBuySuccess = true;
+            }
           }
         }
       } catch (cryptoErr) {
         console.error('Error in crypto buy process:', cryptoErr);
+        try {
+          const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: smtpUser.value(), pass: smtpPass.value() }
+          });
+          await transporter.sendMail({
+            from: smtpUser.value(),
+            to: adminEmail.value(),
+            subject: `ALERT: Deposit Crypto Purchase Failed`,
+            text: `Error during crypto buy process for deposit of $${numericAmount} COP:\n\n${cryptoErr.message || cryptoErr}`
+          });
+        } catch (mailErr) {
+          console.error('Failed to send error email to admin:', mailErr);
+        }
+      }
+
+      // Finalize status: only set status to settled after successful purchase
+      if (cryptoBuySuccess && marketBuyInfo) {
+        console.log('Finalizing deposit: Setting status to settled and adding marketBuy info...');
+        await newRef.update({ status: 'settled', marketBuy: marketBuyInfo });
+        await rtdb.ref(`deposits/all/${newRef.key}`).update({ status: 'settled', marketBuy: marketBuyInfo });
+
+        // Notify User
+        try {
+          const userRecord = await admin.auth().getUser(matchedUid);
+          if (userRecord && userRecord.email) {
+            await sendUserCryptoDepositEmail(userRecord.email, parsedName, parsedAmount, btcBought);
+          }
+        } catch (userErr) {
+          console.error('Error fetching user email for notification:', userErr);
+        }
       }
 
     } else {
