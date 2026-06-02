@@ -840,6 +840,8 @@ async function sendUserCryptoDepositEmail(userEmail, userName, copAmount, btcAmo
     },
   });
 
+  const formattedCop = typeof copAmount === 'number' ? copAmount.toLocaleString('de-DE') : copAmount;
+
   const mailOptions = {
     from: smtpUser.value(),
     to: userEmail,
@@ -849,7 +851,7 @@ async function sendUserCryptoDepositEmail(userEmail, userName, copAmount, btcAmo
             <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
           </div>
           <p>Hola ${userName || 'User'},</p>
-          <p><strong>¡Hemos recibido exitosamente tu depósito de $${copAmount} COP!</strong></p>
+          <p><strong>¡Hemos recibido exitosamente tu depósito de $${formattedCop} COP!</strong></p>
           <p>¡Tu billetera de BTC ha sido acreditada con ${btcAmount} BTC!</p>
           <p>Inicia sesión en Rendimientos.net para ver tu saldo actualizado.</p>
         `,
@@ -997,7 +999,8 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
   }
 
   const parsedName = nameMatch[1].trim().toUpperCase();
-  const parsedAmount = amountMatch[1].trim(); // Extracting amount as string
+  const parsedAmountStr = amountMatch[1].trim(); // Extracting amount as string
+  const numericAmount = parseFloat(parsedAmountStr.replace(/,/g, ''));
   const parsedDate = dateMatch ? dateMatch[1] : null;
   const parsedTime = timeMatch ? timeMatch[1] : null;
 
@@ -1021,7 +1024,7 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
 
   const depositData = {
     parsedName,
-    amount: parsedAmount,
+    amount: numericAmount, // Stored as a pure number (e.g. 12000 instead of "12,000.00")
     date: parsedDate,
     time: parsedTime,
     rawEmail: emailBody,
@@ -1043,7 +1046,6 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
       await sendDepositEmailToAdmin(depositData, true);
 
       // --- Crypto Buy Logic ---
-      const numericAmount = parseFloat(parsedAmount.replace(/,/g, ''));
       let cryptoBuySuccess = false;
       let marketBuyInfo = null;
       let btcBought = 0;
@@ -1135,7 +1137,7 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
         try {
           const userRecord = await admin.auth().getUser(matchedUid);
           if (userRecord && userRecord.email) {
-            await sendUserCryptoDepositEmail(userRecord.email, parsedName, parsedAmount, btcBought);
+            await sendUserCryptoDepositEmail(userRecord.email, parsedName, numericAmount, btcBought);
           }
         } catch (userErr) {
           console.error('Error fetching user email for notification:', userErr);
