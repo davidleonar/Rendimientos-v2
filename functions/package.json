@@ -8,7 +8,8 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "dev": "next dev",
-    "build": "next build && cp -r .next functions/.next"
+    "build": "next build && cp -r .next functions/.next",
+    "manual-deposit": "node scripts/manual_deposit.js"
   },
   "engines": {
     "node": "22"

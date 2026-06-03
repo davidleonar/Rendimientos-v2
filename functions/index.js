@@ -1160,6 +1160,231 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
     res.status(500).send('Database error');
   }
 });
+exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken] }, (req, res) => {
+  cors(req, res, async () => {
+    // 1. Verify token
+    if (!(await verifyToken(req, res))) return;
+
+    // 2. Check if user is admin
+    if (req.user.uid !== adminUid.value()) {
+      return res.status(403).send('Forbidden: Only admins can perform manual deposits.');
+    }
+
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed. Use POST.');
+    }
+
+    try {
+      const { uid, amount, time, date, usdtCopRate } = req.body;
+
+      if (!uid || !amount || !time) {
+        return res.status(400).send('Missing required fields: uid, amount, time');
+      }
+
+      const numericAmount = parseFloat(amount);
+      if (isNaN(numericAmount) || numericAmount <= 0) {
+        return res.status(400).send('Invalid amount');
+      }
+
+      // Time format: HH:MM or HH:MM:SS
+      let normalizedTime = time;
+      if (normalizedTime.split(':').length === 2) {
+        normalizedTime += ':00';
+      }
+
+      // Default date to today in America/Bogota
+      let normalizedDate = date;
+      if (!normalizedDate) {
+        normalizedDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // returns YYYY-MM-DD
+      }
+
+      // Build the Bogota timestamp
+      const datetimeStr = `${normalizedDate}T${normalizedTime}-05:00`;
+      const timestamp = new Date(datetimeStr).getTime();
+
+      if (isNaN(timestamp)) {
+        return res.status(400).send('Invalid Date/Time format');
+      }
+
+      // A. Get USDT/COP rate
+      let finalUsdtCopRate = usdtCopRate ? parseFloat(usdtCopRate) : null;
+      let copSource = 'Manual Override';
+      if (!finalUsdtCopRate) {
+        try {
+          const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=cop');
+          if (cgRes.ok) {
+            const cgData = await cgRes.json();
+            finalUsdtCopRate = cgData?.tether?.cop;
+            copSource = 'CoinGecko';
+          }
+        } catch (err) {
+          console.warn('CoinGecko fetch failed:', err.message);
+        }
+
+        if (!finalUsdtCopRate) {
+          try {
+            const cbRes = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=USD');
+            if (cbRes.ok) {
+              const cbData = await cbRes.json();
+              finalUsdtCopRate = parseFloat(cbData?.data?.rates?.COP);
+              copSource = 'Coinbase Fallback';
+            }
+          } catch (err) {
+            console.error('Coinbase fetch failed:', err.message);
+          }
+        }
+      }
+
+      if (!finalUsdtCopRate) {
+        return res.status(500).send('Failed to retrieve USDT/COP exchange rate');
+      }
+
+      // B. Get BTC/USDT price from Binance at timestamp (via proxy)
+      let btcUsdtPrice = null;
+      let btcSource = 'Binance (via Proxy)';
+      try {
+        const endpoint = '/api/v3/klines';
+        const queryString = `symbol=BTCUSDT&interval=1m&startTime=${timestamp}&limit=1`;
+        const proxyUrl = `${proxyVmUrl.value()}${endpoint}?${queryString}`;
+        const response = await fetch(proxyUrl, {
+          method: 'GET',
+          headers: {
+            'x-binance-proxy-token': binanceProxyToken.value(),
+            'Host': 'api.binance.com'
+          }
+        });
+
+        if (response.ok) {
+          const klines = await response.json();
+          if (klines && klines.length > 0) {
+            btcUsdtPrice = parseFloat(klines[0][4]);
+          }
+        }
+      } catch (err) {
+        console.warn('Proxy BTC lookup failed:', err.message);
+      }
+
+      if (!btcUsdtPrice) {
+        // Fallback to CoinGecko current price
+        try {
+          const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+          if (cgRes.ok) {
+            const cgData = await cgRes.json();
+            btcUsdtPrice = cgData?.bitcoin?.usd;
+            btcSource = 'CoinGecko (Current Fallback)';
+          }
+        } catch (err) {
+          console.error('CoinGecko fallback failed:', err.message);
+        }
+      }
+
+      if (!btcUsdtPrice) {
+        return res.status(500).send('Failed to retrieve BTC price');
+      }
+
+      // C. Perform calculations
+      const usdtSpent = Math.floor((numericAmount / finalUsdtCopRate) * 100) / 100;
+      const btcBought = parseFloat((usdtSpent / btcUsdtPrice).toFixed(8));
+      const orderId = '2289270283' + Math.floor(1000000000 + Math.random() * 9000000000);
+
+      // D. Get user details from balances
+      const balancesRef = rtdb.ref(`balances/${uid}`);
+      const balanceSnap = await balancesRef.once('value');
+      const userBalance = balanceSnap.val();
+
+      if (!userBalance) {
+        return res.status(404).send(`User profile not found in /balances/${uid}`);
+      }
+
+      const userName = userBalance.name || 'MANUAL DEPOSIT';
+
+      // Helper function to format YYYY-MM-DD to DD-MMM-YYYY
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const [y, m, d] = normalizedDate.split('-');
+      const displayDate = `${d.padStart(2, '0')}-${months[parseInt(m, 10) - 1]}-${y}`;
+
+      // E. Write deposit record
+      const newRef = rtdb.ref(`deposits/${uid}`).push();
+      const depositId = newRef.key;
+
+      const depositData = {
+        date: displayDate,
+        depositId: depositId,
+        marketBuy: {
+          btcBought,
+          btcUsdtPrice,
+          orderId,
+          priceSource: btcSource.includes('Binance') ? 'Binance' : 'CoinGecko',
+          usdtCopPrice: finalUsdtCopRate,
+          usdtSpent
+        },
+        parsedName: userName.toUpperCase(),
+        amount: numericAmount,
+        saldoCop: numericAmount,
+        status: 'settled',
+        time: normalizedTime,
+        timestamp: timestamp,
+        uid: uid,
+        userNotified: false
+      };
+
+      await newRef.set(depositData);
+      await rtdb.ref(`deposits/all/${depositId}`).set(depositData);
+
+      // F. Send notification email if possible
+      let emailSent = false;
+      try {
+        const userRecord = await admin.auth().getUser(uid);
+        if (userRecord && userRecord.email) {
+          const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user: smtpUser.value(),
+              pass: smtpPass.value()
+            }
+          });
+
+          const formattedCop = numericAmount.toLocaleString('de-DE');
+          const mailOptions = {
+            from: smtpUser.value(),
+            to: userRecord.email,
+            subject: `Depósito Exitoso - Saldo BTC Actualizado`,
+            html: `
+                  <div style="text-align: center; margin-bottom: 20px;">
+                    <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
+                  </div>
+                  <p>Hola ${userName || 'User'},</p>
+                  <p><strong>¡Hemos recibido exitosamente tu depósito de $${formattedCop} COP!</strong></p>
+                  <p>¡Tu billetera de BTC ha sido acreditada con ${btcBought} BTC!</p>
+                  <p>Inicia sesión en Rendimientos.net para ver tu saldo actualizado.</p>
+                `
+          };
+
+          await transporter.sendMail(mailOptions);
+          emailSent = true;
+          await rtdb.ref(`deposits/${uid}/${depositId}`).update({ userNotified: true });
+          await rtdb.ref(`deposits/all/${depositId}`).update({ userNotified: true });
+        }
+      } catch (err) {
+        console.warn('Skipping email notification:', err.message);
+      }
+
+      res.status(200).json({
+        success: true,
+        depositId,
+        btcBought,
+        btcUsdtPrice,
+        usdtCopPrice: finalUsdtCopRate,
+        usdtSpent,
+        emailSent
+      });
+
+    } catch (err) {
+      console.error('Manual deposit function error:', err);
+      res.status(500).send('Internal Server Error: ' + err.message);
+    }
+  });
+});
 exports.testBinanceProxy = onRequest({ secrets: [binanceApiKey, binanceSecretKey, binanceProxyToken] }, async (req, res) => {
   try {
     const balance = await getBinanceUsdtBalance();
