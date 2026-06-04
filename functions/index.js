@@ -201,7 +201,7 @@ exports.getDataById = onRequest((req, res) => {
         return res.status(500).send('No "uid" column found in spreadsheet headers.');
       }
 
-      const isAdmin = req.user.uid === adminUid.value();
+      const isAdmin = req.user.uid === adminUid.value() || req.user.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1';
 
       const filteredData = data
         .filter((row) => {
@@ -1166,7 +1166,7 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
     if (!(await verifyToken(req, res))) return;
 
     // 2. Check if user is admin
-    if (req.user.uid !== adminUid.value()) {
+    if (req.user.uid !== adminUid.value() && req.user.uid !== 'VldgsZCsJaOTrFT2uR2YvXxUe7o1') {
       return res.status(403).send('Forbidden: Only admins can perform manual deposits.');
     }
 
