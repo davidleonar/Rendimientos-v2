@@ -1,5 +1,4 @@
 const functions = require('firebase-functions');
-const { google } = require('googleapis');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getDatabase } = require('firebase-admin/database');
@@ -14,6 +13,7 @@ const { defineString, defineSecret } = require('firebase-functions/params');
 const { onValueCreated, onValueUpdated, onValueWritten } = require('firebase-functions/v2/database');
 //const { https: { onRequest } } = require('firebase-functions/v2');
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 
 const next = require('next');
 const path = require('path');
@@ -66,221 +66,10 @@ async function verifyToken(req, res) {
 
 const rtdb = getDatabase();
 
-// Helper function to fetch all spreadsheet data
-async function fetchAllSpreadsheetData(spreadsheetId, range) {
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
-
-    const rows = response.data.values;
-
-    if (!rows || rows.length === 0) {
-      console.log('No data found in spreadsheet.');
-      return [];
-    }
-
-    const headers = rows[0];
-    const data = rows.slice(1).map((row) => {
-      const rowData = {};
-      headers.forEach((header, index) => {
-        rowData[header] = row[index] || null;
-      });
-      return rowData;
-    });
-
-    return data;
-  } catch (error) {
-    console.error('Error fetching spreadsheet data:', error);
-    throw error;
-  }
-}
-
-
-// Google Sheets configuration
-const sheets = google.sheets({
-  version: 'v4',
-  auth: new google.auth.GoogleAuth({
-    keyFile: './serviceAccountKey.json', // Update with the path to your service account file
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  }),
-});
-
-
-// Helper function to fetch and filter spreadsheet data by ID
-async function fetchSpreadsheetDataById(spreadsheetId, range, id) {
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
-
-    const rows = response.data.values;
-
-    if (!rows || rows.length === 0) {
-      console.log('No data found in spreadsheet.');
-      throw new Error('No data found.');
-    }
-
-    const headers = rows[0];
-    const data = rows.slice(1);
-
-    const idColumnIndex = headers.findIndex(
-      (header) => header.toLowerCase() === 'id'
-    );
-    if (idColumnIndex === -1) {
-      throw new Error('No "id" column found in spreadsheet headers.');
-    }
-
-    const filteredData = data
-      .filter((row) => row[idColumnIndex] && row[idColumnIndex].toString() === id.toString())
-      .map((row) => {
-        const rowData = {};
-        headers.forEach((header, index) => {
-          rowData[header] = row[index] || null;
-        });
-        return rowData;
-      });
-
-    return filteredData;
-  } catch (error) {
-    console.error('Error fetching spreadsheet data:', error);
-    throw error;
-  }
-}
-
-exports.getDataById = onRequest((req, res) => {
-  cors(req, res, async () => {
-
-    // The verifyToken middleware now handles sending the response on failure.
-    // If it returns false, we just stop.
-    if (!(await verifyToken(req, res))) return;
-
-    console.log(`Request authenticated for user: ${req.user.uid}`);
-
-    if (req.method !== 'GET') {
-      return res.status(405).send('Method Not Allowed. Use GET.');
-    }
-
-    const id = req.query.id;
-    if (!id) {
-      return res.status(400).send('Missing "id" parameter in query.');
-    }
-
-    try {
-      const spreadsheetId = '1Etee_5MhgVS6ozENYqcagoqjq4z3a64mn1WD6y_aCIg';
-      const range = 'Sheet1!A1:G50';
-
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range,
-      });
-
-      const rows = response.data.values;
-
-      if (!rows || rows.length === 0) {
-        console.log('No data found in spreadsheet.');
-        return res.status(404).send('No data found.');
-      }
-
-      const headers = rows[0];
-      const data = rows.slice(1);
-
-      const idColumnIndex = headers.findIndex(
-        (header) => header.toLowerCase() === 'id'
-      );
-      if (idColumnIndex === -1) {
-        return res.status(500).send('No "id" column found in spreadsheet headers.');
-      }
-
-      const uidColumnIndex = headers.findIndex(
-        (header) => header.toLowerCase() === 'uid'
-      );
-      if (uidColumnIndex === -1) {
-        return res.status(500).send('No "uid" column found in spreadsheet headers.');
-      }
-
-      const isAdmin = req.user.uid === adminUid.value() || req.user.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1';
-
-      const filteredData = data
-        .filter((row) => {
-          // Check if ID matches
-          if (!row[idColumnIndex] || row[idColumnIndex].toString() !== id.toString()) {
-            return false;
-          }
-          // Validate UID matches req.user.uid, bypass if Admin
-          if (!isAdmin) {
-            const rowUid = row[uidColumnIndex];
-            if (!rowUid || rowUid.toString() !== req.user.uid) {
-              return false;
-            }
-          }
-          return true;
-        })
-        .map((row) => {
-          const rowData = {};
-          headers.forEach((header, index) => {
-            rowData[header] = row[index] || null;
-          });
-          return rowData;
-        });
-
-      if (filteredData.length === 0) {
-        return res.status(404).send(`No data found for id: ${id}`);
-      }
-
-      console.log("Successfully fetched data:", filteredData);
-
-      res.status(200).json({
-        success: true,
-        data: filteredData,
-      });
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      res.status(500).send('Internal Server Error');
-    }
-  });
-});
-
-// New function: getMovementsById
-exports.getMovementsById = onRequest((req, res) => {
-  cors(req, res, async () => {
-    if (!(await verifyToken(req, res))) return;
-    if (req.method !== 'GET') {
-      return res.status(405).send('Method Not Allowed. Use GET.');
-    }
-
-    const id = req.query.id;
-    if (!id) {
-      return res.status(400).send('Missing "id" parameter in query.');
-    }
-
-    try {
-      const spreadsheetId = '1Ke7ftv8OSmec6yqpjMzOXIqLaK24Dp8S4Pc5JEmCMlE';
-      const range = 'Sheet1!A1:H120'; // Adjust if movements are in a different sheet/range
-
-      const filteredData = await fetchSpreadsheetDataById(spreadsheetId, range, id);
-
-      if (filteredData.length === 0) {
-        return res.status(404).send(`No movements found for id: ${id}`);
-      }
-
-      res.status(200).json({
-        success: true,
-        data: filteredData,
-      });
-    } catch (error) {
-      console.error('Error in getMovementsById:', error);
-      res.status(500).send('Internal Server Error');
-    }
-  });
-});
-
 // LND proxy para conectar con el Nodo Umbrel
 exports.lndProxy = onRequest({ secrets: [mainMacaroon] }, (req, res) => {
   cors(req, res, async () => {
-    //if (!(await verifyToken(req, res))) return;
+    if (!(await verifyToken(req, res))) return;
 
     console.log('lndProxy request:', {
       method: req.method,
@@ -319,6 +108,28 @@ exports.lndProxy = onRequest({ secrets: [mainMacaroon] }, (req, res) => {
       // 2. Validate method
       if (!['GET', 'POST'].includes(req.method)) {
         return res.status(405).json({ error: 'Method not allowed. Use GET or POST.' });
+      }
+
+      // Whitelist check for non-admin users
+      const ADMIN_UIDS = [adminUid.value(), 'VldgsZCsJaOTrFT2uR2YvXxUe7o1'];
+      const isAdmin = ADMIN_UIDS.includes(req.user.uid);
+      const pathWithoutQuery = path.split('?')[0];
+
+      if (!isAdmin) {
+        if (req.method === 'POST') {
+          const allowedPOST = ['/v1/invoices', '/v1/channels/transactions'];
+          if (!allowedPOST.includes(pathWithoutQuery)) {
+            return res.status(403).json({ error: 'Forbidden: Admin access required.' });
+          }
+        } else if (req.method === 'GET') {
+          const isInvoiceGet = pathWithoutQuery.startsWith('/v1/invoice/');
+          const isFeesGet = pathWithoutQuery === '/v1/fees';
+          if (!isInvoiceGet && !isFeesGet) {
+            return res.status(403).json({ error: 'Forbidden: Admin access required.' });
+          }
+        } else {
+          return res.status(403).json({ error: 'Forbidden: Method not allowed.' });
+        }
       }
 
       // 3. Parse JSON body (only for POST)
@@ -1394,3 +1205,347 @@ exports.testBinanceProxy = onRequest({ secrets: [binanceApiKey, binanceSecretKey
     res.status(500).send(`Error testing proxy: ${error.message}`);
   }
 });
+
+exports.getNewDepositAddress = onRequest({ secrets: ['MAIN_LND_MACAROON'] }, (req, res) => {
+  cors(req, res, async () => {
+    if (!(await verifyToken(req, res))) return;
+
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed. Use POST.');
+    }
+
+    try {
+      const uid = req.user.uid;
+      const lndUrlFinal = `${lndUrl.value()}/v1/newaddress?type=WITNESS_PUBKEY_HASH`;
+      console.log(`Generating new address for user ${uid} at ${lndUrlFinal}`);
+
+      const response = await fetch(lndUrlFinal, {
+        method: 'GET',
+        headers: {
+          'Grpc-Metadata-macaroon': mainMacaroon.value(),
+        }
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('LND NewAddress error:', response.status, text);
+        return res.status(502).json({ error: 'Failed to generate address from node', details: text });
+      }
+
+      const data = await response.json();
+      const address = data.address;
+      if (!address) {
+        return res.status(502).json({ error: 'No address returned from node' });
+      }
+
+      // Save to global lookup
+      await rtdb.ref(`btcAddresses/${address}`).set({
+        uid: uid,
+        generatedAt: Date.now()
+      });
+
+      // Update user balances profile
+      await rtdb.ref(`balances/${uid}/btcDepositAddress`).set(address);
+      await rtdb.ref(`balances/${uid}/btcDepositAddresses/${address}`).set({
+        generatedAt: Date.now()
+      });
+
+      console.log(`Successfully generated and mapped address ${address} for user ${uid}`);
+      return res.status(200).json({ success: true, address });
+
+    } catch (error) {
+      console.error('Error in getNewDepositAddress:', error);
+      return res.status(500).send('Internal Server Error: ' + error.message);
+    }
+  });
+});
+
+exports.processOnChainWithdrawal = onRequest({ secrets: ['MAIN_LND_MACAROON', 'SMTP_PASS'] }, (req, res) => {
+  cors(req, res, async () => {
+    if (!(await verifyToken(req, res))) return;
+
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed. Use POST.');
+    }
+
+    const { address, amountBtc, feeTier } = req.body || {};
+    if (!address || !amountBtc || !feeTier) {
+      return res.status(400).json({ error: 'Missing required parameters: address, amountBtc, feeTier' });
+    }
+
+    // 1. Validate Address
+    const { validate } = require('bitcoin-address-validation');
+    const isValidAddress = validate(address, 'mainnet');
+    if (!isValidAddress) {
+      return res.status(400).json({ error: 'Invalid Bitcoin mainnet address.' });
+    }
+
+    // 2. Validate Amount
+    const amountBtcNum = parseFloat(amountBtc);
+    if (isNaN(amountBtcNum) || amountBtcNum <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number.' });
+    }
+
+    // 3. Validate Fee Tier
+    const allowedTiers = ['high', 'medium', 'low'];
+    if (!allowedTiers.includes(feeTier)) {
+      return res.status(400).json({ error: 'Invalid feeTier. Must be high, medium, or low.' });
+    }
+
+    try {
+      const uid = req.user.uid;
+
+      // 4. Fetch recommended precise fees from Mempool.space
+      let feeRate = 15.0; // fallback
+      try {
+        const feeRes = await fetch('https://mempool.space/api/v1/fees/precise');
+        if (feeRes.ok) {
+          const fees = await feeRes.json();
+          if (feeTier === 'high') feeRate = parseFloat(fees.fastestFee);
+          else if (feeTier === 'medium') feeRate = parseFloat(fees.halfHourFee);
+          else feeRate = parseFloat(fees.hourFee);
+        } else {
+          console.warn('Mempool.space precise fee API failed, using fallback fee rate of 15 sat/vB.');
+        }
+      } catch (feeErr) {
+        console.warn('Error fetching fees from Mempool.space:', feeErr.message);
+      }
+
+      // 5. Calculate Satoshis and Fees
+      const amountSats = Math.round(amountBtcNum * 100000000);
+      const platformFeeSats = Math.ceil(amountSats * 0.01);
+      const networkFeeSats = Math.ceil(148 * feeRate); // estimate 148 vBytes size
+      const totalDeductSats = amountSats + platformFeeSats + networkFeeSats;
+      const totalDeductBtc = parseFloat((totalDeductSats / 100000000).toFixed(8));
+
+      const requestedBtc = parseFloat((amountSats / 100000000).toFixed(8));
+      const feeBtc = parseFloat(((platformFeeSats + networkFeeSats) / 100000000).toFixed(8));
+
+      // 6. Balance Check (read-only, deduction is performed when the withdrawals record settles)
+      const balanceSnap = await rtdb.ref(`balances/${uid}/BTCbalance`).once('value');
+      const currentBtc = parseFloat(balanceSnap.val() || 0);
+
+      if (currentBtc < totalDeductBtc) {
+        return res.status(400).json({ error: `Insufficient BTC balance. Required: ${totalDeductBtc} BTC, Available: ${currentBtc} BTC.` });
+      }
+
+      console.log(`User ${uid} has sufficient balance (${currentBtc} BTC). Broadcasting tx to ${address}...`);
+
+      // 7. Call LND SendCoins REST API
+      const lndUrlFinal = `${lndUrl.value()}/v1/transactions`;
+      let txid = '';
+      try {
+        const lndRes = await fetch(lndUrlFinal, {
+          method: 'POST',
+          headers: {
+            'Grpc-Metadata-macaroon': mainMacaroon.value(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            addr: address,
+            amount: amountSats.toString(),
+            sat_per_vbyte: Math.round(feeRate).toString()
+          })
+        });
+
+        if (!lndRes.ok) {
+          const errText = await lndRes.text();
+          throw new Error(errText || `LND HTTP error ${lndRes.status}`);
+        }
+
+        const lndData = await lndRes.json();
+        if (lndData.payment_error) {
+          throw new Error(lndData.payment_error);
+        }
+        txid = lndData.txid;
+        if (!txid) {
+          throw new Error('No txid returned from LND SendCoins');
+        }
+      } catch (broadcastErr) {
+        console.error('LND transaction broadcast failed:', broadcastErr.message);
+        return res.status(502).json({ error: 'Failed to broadcast transaction via LND node', details: broadcastErr.message });
+      }
+
+      console.log(`Successfully broadcasted transaction ${txid} for withdrawal.`);
+
+      // 8. Fetch prices to calculate COP equivalent
+      const prices = await getPrices().catch(() => ({ btcUsdt: 0, usdtCop: 0 }));
+      const btcUsdt = prices.btcUsdt || 0;
+      const usdtCop = prices.usdtCop || 0;
+      const copEquivalent = Math.round(requestedBtc * btcUsdt * usdtCop);
+
+      // 9. Write settled withdrawal record (this triggers notifyWithdrawalSettled to deduct the balance)
+      const withdrawalRef = rtdb.ref(`withdrawals/${uid}`).push();
+      const requestId = withdrawalRef.key;
+
+      const userRecord = await admin.auth().getUser(uid).catch(() => ({ email: 'email' }));
+      const userBalanceSnap = await rtdb.ref(`balances/${uid}`).once('value');
+      const userName = userBalanceSnap.val()?.name || 'Unknown';
+
+      const withdrawalData = {
+        uid: uid,
+        userEmail: userRecord.email || 'email',
+        name: userName,
+        amount: copEquivalent,
+        requestedBtcAmount: requestedBtc,
+        fee: feeBtc,
+        totalBtcToDeduct: totalDeductBtc,
+        bankData: address,
+        bankName: 'Bitcoin On-Chain',
+        option: 'btcOnChain',
+        timestamp: Date.now(),
+        status: 'settled',
+        txid: txid,
+        requestId: requestId,
+        receipt: {
+          btcUsdt: btcUsdt,
+          usdtCop: usdtCop,
+          feeRate: feeRate
+        }
+      };
+
+      await rtdb.ref(`withdrawals/${uid}/${requestId}`).set(withdrawalData);
+      
+      return res.status(200).json({ success: true, txid, requestId });
+
+    } catch (error) {
+      console.error('Error in processOnChainWithdrawal:', error);
+      return res.status(500).send('Internal Server Error: ' + error.message);
+    }
+  });
+});
+
+exports.syncOnChainDeposits = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    secrets: ['MAIN_LND_MACAROON', 'SMTP_PASS'],
+    memory: '512MiB'
+  },
+  async (event) => {
+    console.log('--- STARTING ON-CHAIN DEPOSIT SYNC CRON ---');
+    try {
+      // 1. Fetch address mappings
+      const btcAddressesSnap = await rtdb.ref('btcAddresses').once('value');
+      const addressMap = btcAddressesSnap.val() || {};
+      const activeAddresses = Object.keys(addressMap);
+
+      if (activeAddresses.length === 0) {
+        console.log('No deposit addresses generated in RTDB. Skipping sync.');
+        return null;
+      }
+
+      // 2. Fetch LND transactions
+      const lndUrlFinal = `${lndUrl.value()}/v1/transactions`;
+      const response = await fetch(lndUrlFinal, {
+        method: 'GET',
+        headers: {
+          'Grpc-Metadata-macaroon': mainMacaroon.value()
+        }
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Failed to fetch transactions from LND: ${errText}`);
+      }
+
+      const lndData = await response.json();
+      const transactions = lndData.transactions || [];
+      console.log(`Fetched ${transactions.length} total on-chain transactions from LND.`);
+
+      // 3. Process each LND transaction
+      for (const tx of transactions) {
+        const amountSats = parseInt(tx.amount || '0');
+        // Deposits have positive amount in LND
+        if (amountSats <= 0) continue;
+
+        const destAddresses = tx.dest_addresses || [];
+        const txid = tx.tx_hash;
+
+        for (const addr of destAddresses) {
+          if (addressMap[addr]) {
+            const { uid } = addressMap[addr];
+            console.log(`Matched transaction ${txid} output to address ${addr} owned by user ${uid}`);
+
+            const confirmations = parseInt(tx.num_confirmations || '0');
+            const targetStatus = confirmations >= 1 ? 'settled' : 'pending';
+
+            // Check if already processed
+            const depositRef = rtdb.ref(`deposits/${uid}/${txid}`);
+            const depositSnap = await depositRef.once('value');
+            const existingDeposit = depositSnap.val();
+
+            if (!existingDeposit) {
+              // Fetch prices to calculate COP value
+              const prices = await getPrices().catch(() => ({ btcUsdt: 0, usdtCop: 0 }));
+              const btcUsdt = prices.btcUsdt || 0;
+              const usdtCop = prices.usdtCop || 0;
+
+              const btcBought = parseFloat((amountSats / 100000000).toFixed(8));
+              const copAmount = Math.round(btcBought * btcUsdt * usdtCop);
+
+              const userBalanceSnap = await rtdb.ref(`balances/${uid}`).once('value');
+              const userName = userBalanceSnap.val()?.name || 'Unknown';
+
+              const depositData = {
+                uid: uid,
+                depositId: txid,
+                address: addr,
+                amount: copAmount,
+                saldoCop: copAmount,
+                btcBought: btcBought,
+                txid: txid,
+                confirmations: confirmations,
+                status: targetStatus,
+                timestamp: parseInt(tx.time_stamp) * 1000,
+                type: 'onchain_deposit',
+                date: new Date(parseInt(tx.time_stamp) * 1000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
+                time: new Date(parseInt(tx.time_stamp) * 1000).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Bogota' }),
+                userNotified: false,
+                parsedName: userName.toUpperCase()
+              };
+
+              console.log(`Creating new ${targetStatus} deposit for user ${uid}.`);
+              await depositRef.set(depositData);
+              await rtdb.ref(`deposits/all/${txid}`).set(depositData);
+
+              // If it settled immediately, trigger email
+              if (targetStatus === 'settled') {
+                const userRecord = await admin.auth().getUser(uid).catch(() => null);
+                if (userRecord && userRecord.email) {
+                  await sendUserCryptoDepositEmail(userRecord.email, userName, copAmount, btcBought);
+                  await depositRef.update({ userNotified: true });
+                  await rtdb.ref(`deposits/all/${txid}`).update({ userNotified: true });
+                }
+              }
+            } else if (existingDeposit.status === 'pending' && targetStatus === 'settled') {
+              console.log(`Deposit ${txid} transitioned from pending to settled. Updating balance and sending email.`);
+              
+              // Update status and confirmations
+              const updates = { status: 'settled', confirmations: confirmations };
+              await depositRef.update(updates);
+              await rtdb.ref(`deposits/all/${txid}`).update(updates);
+
+              // Send email
+              const userRecord = await admin.auth().getUser(uid).catch(() => null);
+              if (userRecord && userRecord.email) {
+                await sendUserCryptoDepositEmail(userRecord.email, existingDeposit.parsedName || 'User', existingDeposit.amount, existingDeposit.btcBought);
+                await depositRef.update({ userNotified: true });
+                await rtdb.ref(`deposits/all/${txid}`).update({ userNotified: true });
+              }
+            } else {
+              // Update confirmations count if it changed but status is same
+              if (existingDeposit.confirmations !== confirmations) {
+                await depositRef.update({ confirmations: confirmations });
+                await rtdb.ref(`deposits/all/${txid}`).update({ confirmations: confirmations });
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error in syncOnChainDeposits cron job:', err);
+    }
+    console.log('--- ON-CHAIN DEPOSIT SYNC CRON COMPLETED ---');
+    return null;
+  }
+);

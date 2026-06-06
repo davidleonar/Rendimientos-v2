@@ -34,6 +34,10 @@
         }
       }
     },
+    "btcAddresses": {
+      ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
+      ".write": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')"
+    },
     "cryptoBalances": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
