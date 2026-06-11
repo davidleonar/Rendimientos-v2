@@ -238,17 +238,6 @@ async function run() {
   console.log(`Writing deposit data to deposits/all/${depositId}...`);
   await rtdb.ref(`deposits/all/${depositId}`).set(depositData);
 
-  // Update legacy cryptoBalances node
-  console.log(`Updating legacy cryptoBalances/${uid}...`);
-  const cryptoBalanceRef = rtdb.ref(`cryptoBalances/${uid}`);
-  const cryptoSnap = await cryptoBalanceRef.once('value');
-  const currentCryptoVal = cryptoSnap.val() ? parseFloat(cryptoSnap.val().balance || 0) : 0;
-  const newCryptoVal = parseFloat((currentCryptoVal + btcBought).toFixed(8));
-  await cryptoBalanceRef.set({
-    balance: newCryptoVal,
-    updatedAt: admin.database.ServerValue.TIMESTAMP
-  });
-  console.log(`Updated legacy crypto balance from ${currentCryptoVal} to ${newCryptoVal} BTC`);
 
   // Attempt Email Notification
   if (userEmail) {

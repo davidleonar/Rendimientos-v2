@@ -9,7 +9,8 @@
     "logs": "firebase functions:log",
     "dev": "next dev",
     "build": "next build && cp -r .next functions/.next",
-    "manual-deposit": "node scripts/manual_deposit.js"
+    "manual-deposit": "node scripts/manual_deposit.js",
+    "test-binance": "node scripts/test_binance_balance.js"
   },
   "engines": {
     "node": "22"

@@ -906,16 +906,6 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
                 priceSource: source
               };
 
-              // Update Crypto Balance
-              const cryptoBalanceRef = rtdb.ref(`cryptoBalances/${matchedUid}`);
-              const snap = await cryptoBalanceRef.once('value');
-              const currentBalance = snap.val() ? parseFloat(snap.val().balance || 0) : 0;
-              const newBalance = currentBalance + btcBought;
-              await cryptoBalanceRef.set({
-                balance: newBalance,
-                updatedAt: admin.database.ServerValue.TIMESTAMP
-              });
-
               cryptoBuySuccess = true;
             }
           }

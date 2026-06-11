@@ -71,7 +71,7 @@ The application defines the following 2nd Gen HTTP/Eventarc Cloud Functions:
 * **`bancolombiaWebhook`**: HTTP endpoint secured by `WEBHOOK_SECRET` query parameter. Receives forwarded Bancolombia email alerts, parses them via regex to extract depositor name, amount, date, and time. Normalizes the deposited amount to store it as a clean JavaScript number (e.g. `12000` instead of `"12,000.00"`). Matches deposits to users by comparing the first two words of the parsed name against RTDB `balances` names (case-insensitive). Matched deposits go to `deposits/{uid}` + `deposits/all/{key}`, unmatched go to `unassignedDeposits`. 
   * **Failover Price Feed**: Uses a centralized `getPrices()` helper which queries CoinGecko for live prices (`BTC/USDT`, `USDT/COP`) and automatically falls back to Coinbase API if CoinGecko returns an error or is unreachable. Saves `priceSource` inside the deposit object's `marketBuy` receipt for complete auditability.
   * **Small Deposits**: For matched deposits, evaluates the COP amount against a 10 USDT equivalent threshold. If the amount is below 10 USDT, the deposit status is immediately finalized as `'settled'` directly in RTDB (with 0 BTC bought) to prevent small transactions from lingering indefinitely.
-  * **Automated Crypto Purchases**: For deposits >= 10 USDT, evaluates the COP amount and verifies Binance USDT liquidity via the Proxy VM. If sufficient, a `MARKET BUY` for `BTCUSDT` is executed. The resulting BTC is added to `cryptoBalances/{uid}` along with trade details, price source, and status set to `'settled'`, and both user and admin are emailed. If insufficient liquidity or both pricing sources fail, admin receives an urgent warning.
+  * **Automated Crypto Purchases**: For deposits >= 10 USDT, evaluates the COP amount and verifies Binance USDT liquidity via the Proxy VM. If sufficient, a `MARKET BUY` for `BTCUSDT` is executed. The deposit status is set to `'settled'` in `deposits/{uid}/{depositId}`, which triggers `onDepositSettled` to atomically credit the bought BTC to `balances/{uid}/BTCbalance`. Both the user and admin receive email confirmations. If insufficient liquidity or both pricing sources fail, the admin receives an urgent warning.
 
 ## 🗄️ Realtime Database Schema
 ```
@@ -118,11 +118,10 @@ rendimientos-5dbb9-default-rtdb/
         └── generatedAt         # Timestamp
 ```
 
-> **Note:** `cryptoBalances/` is strictly deprecated and should not be relied upon. The UI currently still aggregates it via `cryptoBalance + syncBtcBalance` for legacy display, but backend deduction logic should be stripped from the frontend `handleSettle` to prevent data desyncs or double-deductions.
+> **Note:** `cryptoBalances/` node has been completely deprecated and removed from the database rules, backend Cloud Functions, manual scripts, and the frontend SPA UI. All balances are tracked natively in the `balances/` node.
 
 ## 🔐 RTDB Security Rules (`database.rules.json`)
 - **`balances`**: Read and write are globally enabled (`true`/`true`) for balance tracking.
-- **`cryptoBalances/{uid}`**: Owner or admin can read. Write is restricted to the admin UID only.
 - **`withdrawals`**: Admin can read/write the entire node. Authenticated users can read/write only their own `{uid}` subtree.
 - **`deposits`**: Admin can read/write the entire node. Authenticated users can read/write only their own `{uid}` subtree.
 - **`unassignedDeposits`**: Admin-only read/write.
