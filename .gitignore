@@ -73,6 +73,9 @@ node_modules/
 #Ignore my-spa
 my-spa/
 
+#Ignore next build output
+functions/.next/
+
 #TLS.cert la certificacion TSL del nodo Lightning
 tls.cert
 

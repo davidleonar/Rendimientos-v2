@@ -1,8 +1,0 @@
-{
-  "/_not-found/page": "/_not-found",
-  "/icon.png/route": "/icon.png",
-  "/api/lndProxy/[...path]/route": "/api/lndProxy/[...path]",
-  "/api/tapdProxy/[...path]/route": "/api/tapdProxy/[...path]",
-  "/admin/page": "/admin",
-  "/page": "/"
-}

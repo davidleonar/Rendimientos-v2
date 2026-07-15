@@ -435,6 +435,10 @@ exports.notifyGlobalWithdrawal = onValueCreated(
 
   async (event) => {
     const withdrawal = event.data.val();
+    if (withdrawal && withdrawal.option === 'manualWithdrawal') {
+      console.log('Skipping global withdrawal notifications for manual withdrawal');
+      return null;
+    }
     await sendWithdrawalEmailRequest(withdrawal, 'Global');
     await sendUserWithdrawalEmail(withdrawal);
     return null;  // End cleanly
@@ -1186,6 +1190,128 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
     }
   });
 });
+
+exports.createManualWithdrawal = onRequest({ secrets: [smtpPass] }, (req, res) => {
+  cors(req, res, async () => {
+    // 1. Verify token
+    if (!(await verifyToken(req, res))) return;
+
+    // 2. Check if user is admin
+    if (req.user.uid !== adminUid.value() && req.user.uid !== 'VldgsZCsJaOTrFT2uR2YvXxUe7o1') {
+      return res.status(403).send('Forbidden: Only admins can perform manual withdrawals.');
+    }
+
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed. Use POST.');
+    }
+
+    try {
+      const { uid, amountCop, amountBtc, date, time, destinationAccount, destinationAccountDescription, btcUsdtPrice, usdtCopRate } = req.body;
+
+      if (!uid || !amountCop || !amountBtc || !time || !destinationAccount) {
+        return res.status(400).send('Missing required fields');
+      }
+
+      const numericCop = parseFloat(amountCop);
+      const numericBtc = parseFloat(amountBtc);
+      if (isNaN(numericCop) || numericCop <= 0 || isNaN(numericBtc) || numericBtc <= 0) {
+        return res.status(400).send('Invalid amount values');
+      }
+
+      // Time format: HH:MM or HH:MM:SS
+      let normalizedTime = time;
+      if (normalizedTime.split(':').length === 2) {
+        normalizedTime += ':00';
+      }
+
+      // Default date to today in America/Bogota
+      let normalizedDate = date;
+      if (!normalizedDate) {
+        normalizedDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // returns YYYY-MM-DD
+      }
+
+      // Build the Bogota timestamp
+      const datetimeStr = `${normalizedDate}T${normalizedTime}-05:00`;
+      const timestamp = new Date(datetimeStr).getTime();
+
+      if (isNaN(timestamp)) {
+        return res.status(400).send('Invalid Date/Time format');
+      }
+
+      // Read user details from balances
+      const balancesRef = rtdb.ref(`balances/${uid}`);
+      const balanceSnap = await balancesRef.once('value');
+      const userBalance = balanceSnap.val();
+
+      if (!userBalance) {
+        return res.status(404).send(`User profile not found in /balances/${uid}`);
+      }
+
+      // Check current user balance before manual withdrawal
+      const currentBtc = parseFloat(userBalance.BTCbalance ?? userBalance.BTCBalance ?? userBalance.btcBalance ?? 0);
+      if (currentBtc < numericBtc) {
+        return res.status(400).send(`Insufficient user balance. Available: ${currentBtc} BTC, Requesting: ${numericBtc} BTC.`);
+      }
+
+      const userName = userBalance.name || 'MANUAL WITHDRAWAL';
+      let userEmail = '';
+      try {
+        const userRecord = await admin.auth().getUser(uid);
+        if (userRecord && userRecord.email) {
+          userEmail = userRecord.email;
+        }
+      } catch (authErr) {
+        console.warn('Could not fetch user email from auth:', authErr.message);
+      }
+
+      // Helper function to format YYYY-MM-DD to DD-MMM-YYYY
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const [y, m, d] = normalizedDate.split('-');
+      const displayDate = `${d.padStart(2, '0')}-${months[parseInt(m, 10) - 1]}-${y}`;
+
+      // Write withdrawal record
+      const withdrawalRef = rtdb.ref(`withdrawals/${uid}`).push();
+      const requestId = withdrawalRef.key;
+
+      const withdrawalData = {
+        uid: uid,
+        userEmail: userEmail,
+        name: userName,
+        amount: numericCop,
+        saldoCop: numericCop,
+        requestedBtcAmount: numericBtc,
+        fee: 0,
+        totalBtcToDeduct: numericBtc,
+        bankData: destinationAccountDescription || '',
+        bankName: destinationAccount,
+        option: 'manualWithdrawal',
+        timestamp: timestamp,
+        status: 'settled',
+        date: displayDate,
+        time: normalizedTime,
+        userNotified: false,
+        receipt: {
+          btcUsdt: btcUsdtPrice || 0,
+          usdtCop: usdtCopRate || 0
+        }
+      };
+
+      await rtdb.ref(`withdrawals/${uid}/${requestId}`).set(withdrawalData);
+
+      res.status(200).json({
+        success: true,
+        requestId,
+        deductedBtc: numericBtc,
+        deductedCop: numericCop
+      });
+
+    } catch (err) {
+      console.error('Manual withdrawal function error:', err);
+      res.status(500).send('Internal Server Error: ' + err.message);
+    }
+  });
+});
+
 exports.testBinanceProxy = onRequest({ secrets: [binanceApiKey, binanceSecretKey, binanceProxyToken] }, async (req, res) => {
   try {
     const balance = await getBinanceUsdtBalance();
