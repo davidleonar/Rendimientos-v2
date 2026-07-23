@@ -4,11 +4,11 @@
  * Manual Deposit & Market Buy Generator Script
  * 
  * Usage:
- *   node manual_deposit.js <UID> <COP_AMOUNT> <TIME> [DATE] [USDT_COP_RATE]
+ *   node manual_deposit.js <UID> <COP_AMOUNT> <TIME> [DATE] [USDT_COP_RATE] [FEE_COP]
  * 
  * Examples:
  *   node manual_deposit.js 1152441435-1 1000000 11:59:00
- *   node manual_deposit.js 1035027441 200000 14:30 2026-06-02 3575.50
+ *   node manual_deposit.js 1035027441 200000 14:30 2026-06-02 3575.50 5000
  */
 
 const admin = require('firebase-admin');
@@ -22,7 +22,7 @@ const args = process.argv.slice(2);
 if (args.length < 3) {
   console.log(`
 Usage:
-  node manual_deposit.js <UID> <COP_AMOUNT> <TIME> [DATE] [USDT_COP_RATE]
+  node manual_deposit.js <UID> <COP_AMOUNT> <TIME> [DATE] [USDT_COP_RATE] [FEE_COP]
 
 Arguments:
   UID           The user's ID or national ID (e.g. "1152441435-1")
@@ -30,10 +30,11 @@ Arguments:
   TIME          Deposit time in HH:MM:SS or HH:MM format (e.g. "11:59:00")
   DATE          (Optional) Deposit date in YYYY-MM-DD format. Defaults to today (Bogota time).
   USDT_COP_RATE (Optional) Override USDT/COP exchange rate. Defaults to current CoinGecko rate.
+  FEE_COP       (Optional) Fee amount in COP. Defaults to 0.
 
 Examples:
   node manual_deposit.js 1152441435-1 1000000 11:59:00
-  node manual_deposit.js 1035027441 200000 14:30 2026-06-02 3575.50
+  node manual_deposit.js 1035027441 200000 14:30 2026-06-02 3575.50 5000
 `);
   process.exit(1);
 }
@@ -54,11 +55,24 @@ if (!dateStr) {
 }
 
 const usdtCopRateOverride = args[4] ? parseFloat(args[4]) : null;
+const feeCop = args[5] ? parseFloat(args[5]) : 0;
 
-if (isNaN(copAmount)) {
-  console.error('Error: COP_AMOUNT must be a valid number.');
+if (isNaN(copAmount) || copAmount <= 0) {
+  console.error('Error: COP_AMOUNT must be a valid positive number.');
   process.exit(1);
 }
+
+if (isNaN(feeCop) || feeCop < 0) {
+  console.error('Error: FEE_COP must be a non-negative number.');
+  process.exit(1);
+}
+
+if (feeCop >= copAmount) {
+  console.error('Error: FEE_COP cannot be greater than or equal to COP_AMOUNT.');
+  process.exit(1);
+}
+
+const netCop = copAmount - feeCop;
 
 // 1. Build the exact ISO datetime string in Bogota timezone (Colombia is UTC-5)
 const datetimeStr = `${dateStr}T${timeStr}-05:00`;
@@ -162,12 +176,14 @@ async function run() {
   const { rate: usdtCopPrice, source: copSource } = await getUsdtCopRate();
   const { price: btcUsdtPrice, source: btcSource } = await getHistoricalBtcPrice(timestamp);
 
-  const usdtSpent = Math.floor((copAmount / usdtCopPrice) * 100) / 100;
+  const usdtSpent = Math.floor((netCop / usdtCopPrice) * 100) / 100;
   const btcBought = parseFloat((usdtSpent / btcUsdtPrice).toFixed(8));
   const orderId = '2289270283' + Math.floor(1000000000 + Math.random() * 9000000000); // 20 digit realistic order ID
 
   console.log(`Calculated metrics:
-  COP Amount: $${copAmount.toLocaleString()} COP
+  COP Gross Amount: $${copAmount.toLocaleString()} COP
+  COP Fee: $${feeCop.toLocaleString()} COP
+  COP Net Invested: $${netCop.toLocaleString()} COP
   USDT/COP Price: $${usdtCopPrice} COP (${copSource})
   USDT Spent: $${usdtSpent} USDT
   BTC/USDT Price: $${btcUsdtPrice} USD (${btcSource})
@@ -223,7 +239,8 @@ async function run() {
     },
     parsedName: userName.toUpperCase(),
     amount: copAmount,
-    saldoCop: copAmount,
+    fee: feeCop,
+    saldoCop: netCop,
     status: 'settled',
     time: timeStr,
     timestamp: timestamp,

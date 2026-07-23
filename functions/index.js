@@ -980,7 +980,7 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
     }
 
     try {
-      const { uid, amount, time, date, usdtCopRate } = req.body;
+      const { uid, amount, time, date, usdtCopRate, feeCop } = req.body;
 
       if (!uid || !amount || !time) {
         return res.status(400).send('Missing required fields: uid, amount, time');
@@ -990,6 +990,16 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
       if (isNaN(numericAmount) || numericAmount <= 0) {
         return res.status(400).send('Invalid amount');
       }
+
+      const numericFeeCop = feeCop ? parseFloat(feeCop) : 0;
+      if (isNaN(numericFeeCop) || numericFeeCop < 0) {
+        return res.status(400).send('Invalid feeCop value');
+      }
+      if (numericFeeCop >= numericAmount) {
+        return res.status(400).send('Fee cannot be greater than or equal to total deposit amount');
+      }
+
+      const netCop = numericAmount - numericFeeCop;
 
       // Time format: HH:MM or HH:MM:SS
       let normalizedTime = time;
@@ -1087,8 +1097,8 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
         return res.status(500).send('Failed to retrieve BTC price');
       }
 
-      // C. Perform calculations
-      const usdtSpent = Math.floor((numericAmount / finalUsdtCopRate) * 100) / 100;
+      // C. Perform calculations using netCop
+      const usdtSpent = Math.floor((netCop / finalUsdtCopRate) * 100) / 100;
       const btcBought = parseFloat((usdtSpent / btcUsdtPrice).toFixed(8));
       const orderId = '2289270283' + Math.floor(1000000000 + Math.random() * 9000000000);
 
@@ -1125,7 +1135,8 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
         },
         parsedName: userName.toUpperCase(),
         amount: numericAmount,
-        saldoCop: numericAmount,
+        fee: numericFeeCop,
+        saldoCop: netCop,
         status: 'settled',
         time: normalizedTime,
         timestamp: timestamp,
@@ -1181,6 +1192,8 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
         btcUsdtPrice,
         usdtCopPrice: finalUsdtCopRate,
         usdtSpent,
+        netCop,
+        fee: numericFeeCop,
         emailSent
       });
 
@@ -1206,7 +1219,7 @@ exports.createManualWithdrawal = onRequest({ secrets: [smtpPass] }, (req, res) =
     }
 
     try {
-      const { uid, amountCop, amountBtc, date, time, destinationAccount, destinationAccountDescription, btcUsdtPrice, usdtCopRate } = req.body;
+      const { uid, amountCop, amountBtc, feeBtc, date, time, destinationAccount, destinationAccountDescription, btcUsdtPrice, usdtCopRate } = req.body;
 
       if (!uid || !amountCop || !amountBtc || !time || !destinationAccount) {
         return res.status(400).send('Missing required fields');
@@ -1214,9 +1227,12 @@ exports.createManualWithdrawal = onRequest({ secrets: [smtpPass] }, (req, res) =
 
       const numericCop = parseFloat(amountCop);
       const numericBtc = parseFloat(amountBtc);
-      if (isNaN(numericCop) || numericCop <= 0 || isNaN(numericBtc) || numericBtc <= 0) {
-        return res.status(400).send('Invalid amount values');
+      const numericFeeBtc = feeBtc ? parseFloat(feeBtc) : 0;
+      if (isNaN(numericCop) || numericCop <= 0 || isNaN(numericBtc) || numericBtc <= 0 || isNaN(numericFeeBtc) || numericFeeBtc < 0) {
+        return res.status(400).send('Invalid amount or fee values');
       }
+
+      const totalBtcToDeduct = parseFloat((numericBtc + numericFeeBtc).toFixed(8));
 
       // Time format: HH:MM or HH:MM:SS
       let normalizedTime = time;
@@ -1247,10 +1263,10 @@ exports.createManualWithdrawal = onRequest({ secrets: [smtpPass] }, (req, res) =
         return res.status(404).send(`User profile not found in /balances/${uid}`);
       }
 
-      // Check current user balance before manual withdrawal
+      // Check current user balance before manual withdrawal against total required deduction (amount + fee)
       const currentBtc = parseFloat(userBalance.BTCbalance ?? userBalance.BTCBalance ?? userBalance.btcBalance ?? 0);
-      if (currentBtc < numericBtc) {
-        return res.status(400).send(`Insufficient user balance. Available: ${currentBtc} BTC, Requesting: ${numericBtc} BTC.`);
+      if (currentBtc < totalBtcToDeduct) {
+        return res.status(400).send(`Insufficient user balance. Available: ${currentBtc} BTC, Total Required (incl. fee): ${totalBtcToDeduct} BTC.`);
       }
 
       const userName = userBalance.name || 'MANUAL WITHDRAWAL';
@@ -1280,8 +1296,8 @@ exports.createManualWithdrawal = onRequest({ secrets: [smtpPass] }, (req, res) =
         amount: numericCop,
         saldoCop: numericCop,
         requestedBtcAmount: numericBtc,
-        fee: 0,
-        totalBtcToDeduct: numericBtc,
+        fee: numericFeeBtc,
+        totalBtcToDeduct: totalBtcToDeduct,
         bankData: destinationAccountDescription || '',
         bankName: destinationAccount,
         option: 'manualWithdrawal',
@@ -1301,7 +1317,9 @@ exports.createManualWithdrawal = onRequest({ secrets: [smtpPass] }, (req, res) =
       res.status(200).json({
         success: true,
         requestId,
-        deductedBtc: numericBtc,
+        requestedBtc: numericBtc,
+        feeBtc: numericFeeBtc,
+        deductedBtc: totalBtcToDeduct,
         deductedCop: numericCop
       });
 
