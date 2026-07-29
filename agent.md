@@ -61,8 +61,8 @@ The application defines the following 2nd Gen HTTP/Eventarc Cloud Functions:
 * **`syncOnChainDeposits`** (Scheduled): Runs every 5 minutes. Fetches on-chain transactions from the LND node, checks if the destination addresses belong to users, and creates/updates deposit records in RTDB. Credits the balance and notifies the user via email after exactly **1 block confirmation**.
 
 ### Balance Update Triggers
-* **`onDepositSettled`**: `onValueWritten` trigger on `deposits/{uid}/{depositId}`. Explicitly configured with `512MiB` memory limit. When a deposit's status changes to `'settled'`, atomically increments `balances/{uid}/BTCbalance` using a database transaction based on `marketBuy.btcBought`. Also updates `totalCopInvested` and `totalUsdtInvested`, recomputing `avgBuyPrice` (weighted average buy price in COP/BTC) and `avgBuyPriceUsdt` (weighted average buy price in USDT/BTC based on execution-time rates).
-* **`notifyWithdrawalSettled`**: `onValueWritten` trigger on `withdrawals/{uid}/{requestId}`. Explicitly configured with `512MiB` memory limit. When status changes to `'settled'`, atomically deducts `totalBtcToDeduct` from `balances/{uid}/BTCbalance` using a transaction, proportionally reduces `totalCopInvested` and `totalUsdtInvested`, recomputes `avgBuyPrice` and `avgBuyPriceUsdt`, then sends settlement confirmation email to the user.
+* **`onDepositSettled`**: `onValueWritten` trigger on `deposits/{uid}/{depositId}`. Explicitly configured with `512MiB` memory limit. When a deposit's status changes to `'settled'`, atomically increments `balances/{uid}/BTCbalance` using a database transaction based on `marketBuy.btcBought`. Also increments `totalCopInvested` (by fiat deposited) and `totalUsdtInvested` (by USD spent), recomputing `avgBuyPrice` (weighted average buy price in COP/BTC) and `avgBuyPriceUsdt` (weighted average buy price in USDT/BTC based on execution-time rates).
+* **`notifyWithdrawalSettled`**: `onValueWritten` trigger on `withdrawals/{uid}/{requestId}`. Explicitly configured with `512MiB` memory limit. When status changes to `'settled'`, atomically deducts `totalBtcToDeduct` from `balances/{uid}/BTCbalance` using a transaction, proportionally reduces both `totalCopInvested` and `totalUsdtInvested` based on the fraction of BTC balance withdrawn ($\text{fraction} = \frac{\text{BTC withdrawn}}{\text{BTC before}}$), recomputes `avgBuyPrice` and `avgBuyPriceUsdt` for the remaining balance, then sends settlement confirmation email to the user.
 
 ### Withdrawal System (Email Notifications via `nodemailer`)
 * **`notifyGlobalWithdrawal`**: Eventarc-triggered on `withdrawals/{uid}/{requestId}` creation in RTDB. Explicitly configured with `512MiB` memory limit. Sends admin notification email AND user confirmation email. Skips notifications for manual withdrawals.
@@ -84,8 +84,8 @@ rendimientos-5dbb9-default-rtdb/
 │   └── {id}/                   # User balance data (id = Google UID or National ID)
 │       ├── id, name, uid, ...  # Balance fields
 │       ├── BTCbalance          # Authoritative BTC balance (atomically updated by Cloud Functions)
-│       ├── totalCopInvested    # Total COP currently invested (reduced proportionally on withdrawal)
-│       ├── totalUsdtInvested   # Total USDT/USD currently invested based on execution rates (reduced proportionally on withdrawal)
+│       ├── totalCopInvested    # Total COP currently invested (reduced proportionally on withdrawals)
+│       ├── totalUsdtInvested   # Total USDT/USD currently invested (reduced proportionally on withdrawals)
 │       ├── avgBuyPrice         # Weighted average buy price in COP (COP/BTC) = totalCopInvested / BTCbalance
 │       ├── avgBuyPriceUsdt     # Weighted average buy price in USD (USDT/BTC) = totalUsdtInvested / BTCbalance
 │       ├── btcDepositAddress   # The user's active Bech32 on-chain deposit address
