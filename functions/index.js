@@ -472,23 +472,38 @@ exports.onDepositSettled = onValueWritten(
         });
         console.log(`Added ${btcBought} BTC to user ${uid} balance.`);
 
-        // 2. Update totalCopInvested and avgBuyPrice
+        // 2. Update totalCopInvested, totalUsdtInvested, avgBuyPrice, and avgBuyPriceUsdt
         const copAmount = after.saldoCop || parseFloat((after.amount || '0').toString().replace(/,/g, '')) || 0;
+        const usdtSpent = after.marketBuy?.usdtSpent 
+          || (after.marketBuy?.btcBought && after.marketBuy?.btcUsdtPrice ? after.marketBuy.btcBought * after.marketBuy.btcUsdtPrice : 0)
+          || (copAmount > 0 && after.marketBuy?.usdtCopPrice ? copAmount / after.marketBuy.usdtCopPrice : 0);
+
         if (copAmount > 0) {
           const copRef = rtdb.ref(`balances/${uid}/totalCopInvested`);
           await copRef.transaction((current) => {
             return parseFloat(((current || 0) + copAmount).toFixed(2));
           });
-
-          // Read current values and compute avgBuyPrice
-          const balSnap = await rtdb.ref(`balances/${uid}`).once('value');
-          const bal = balSnap.val() || {};
-          const totalCop = bal.totalCopInvested || 0;
-          const totalBtc = bal.BTCbalance || 0;
-          const avg = totalBtc > 0 ? Math.round(totalCop / totalBtc) : 0;
-          await rtdb.ref(`balances/${uid}/avgBuyPrice`).set(avg);
-          console.log(`Updated avgBuyPrice for ${uid}: ${avg} COP/BTC (totalCopInvested: ${totalCop})`);
         }
+
+        if (usdtSpent > 0) {
+          const usdtRef = rtdb.ref(`balances/${uid}/totalUsdtInvested`);
+          await usdtRef.transaction((current) => {
+            return parseFloat(((current || 0) + usdtSpent).toFixed(2));
+          });
+        }
+
+        // Read current values and compute avgBuyPrice & avgBuyPriceUsdt
+        const balSnap = await rtdb.ref(`balances/${uid}`).once('value');
+        const bal = balSnap.val() || {};
+        const totalCop = bal.totalCopInvested || 0;
+        const totalUsdt = bal.totalUsdtInvested || 0;
+        const totalBtc = bal.BTCbalance || 0;
+        const avgCop = totalBtc > 0 ? Math.round(totalCop / totalBtc) : 0;
+        const avgUsdt = totalBtc > 0 ? Math.round(totalUsdt / totalBtc) : 0;
+
+        await rtdb.ref(`balances/${uid}/avgBuyPrice`).set(avgCop);
+        await rtdb.ref(`balances/${uid}/avgBuyPriceUsdt`).set(avgUsdt);
+        console.log(`Updated balances for ${uid}: avgBuyPrice=${avgCop} COP/BTC, avgBuyPriceUsdt=${avgUsdt} USDT/BTC`);
       }
     }
     return null;
@@ -518,6 +533,7 @@ exports.notifyWithdrawalSettled = onValueWritten(
         const preBal = preSnap.val() || {};
         const btcBefore = (preBal.BTCbalance || 0);
         const currentCop = preBal.totalCopInvested || 0;
+        const currentUsdt = preBal.totalUsdtInvested || 0;
 
         // Deduct BTC
         const balanceRef = rtdb.ref(`balances/${uid}/BTCbalance`);
@@ -527,15 +543,21 @@ exports.notifyWithdrawalSettled = onValueWritten(
         });
         console.log(`Deducted ${btcAmountToDeduct} BTC from user ${uid} balance.`);
 
-        // Proportionally reduce totalCopInvested
-        if (btcBefore > 0 && currentCop > 0) {
+        // Proportionally reduce totalCopInvested and totalUsdtInvested
+        if (btcBefore > 0) {
           const fraction = btcAmountToDeduct / btcBefore;
-          const newCop = parseFloat((currentCop - currentCop * fraction).toFixed(2));
+          const newCop = currentCop > 0 ? parseFloat((currentCop - currentCop * fraction).toFixed(2)) : 0;
+          const newUsdt = currentUsdt > 0 ? parseFloat((currentUsdt - currentUsdt * fraction).toFixed(2)) : 0;
           const btcAfter = btcBefore - btcAmountToDeduct;
-          const avg = btcAfter > 0 ? Math.round(newCop / btcAfter) : 0;
+
+          const avgCop = btcAfter > 0 ? Math.round(newCop / btcAfter) : 0;
+          const avgUsdt = btcAfter > 0 ? Math.round(newUsdt / btcAfter) : 0;
+
           await rtdb.ref(`balances/${uid}/totalCopInvested`).set(newCop);
-          await rtdb.ref(`balances/${uid}/avgBuyPrice`).set(avg);
-          console.log(`Updated avgBuyPrice for ${uid}: ${avg} COP/BTC (totalCopInvested: ${newCop})`);
+          await rtdb.ref(`balances/${uid}/totalUsdtInvested`).set(newUsdt);
+          await rtdb.ref(`balances/${uid}/avgBuyPrice`).set(avgCop);
+          await rtdb.ref(`balances/${uid}/avgBuyPriceUsdt`).set(avgUsdt);
+          console.log(`Updated balances after withdrawal for ${uid}: avgBuyPrice=${avgCop} COP/BTC, avgBuyPriceUsdt=${avgUsdt} USDT/BTC`);
         }
       }
       if (!after.userEmail) {
