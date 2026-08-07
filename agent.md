@@ -8,7 +8,7 @@
 - **Frontend SPA Source:** `my-spa/` directory — a standalone Next.js project (TypeScript, TailwindCSS 3) that builds into `functions/.next/`.
 - **Backend Stack:** Node.js v22 (Cloud Functions 2nd Gen), Firebase Realtime Database (RTDB), Firebase Authentication.
 - **Package Manager:** `pnpm` (used in both `functions/` and `my-spa/`).
-- **Admin UID:** `5XgksHrgmyeGqqKFYGVjQVM0KGl1` (hardcoded in RTDB rules and referenced via `ADMIN_UID` defineString param in functions).
+- **Admin UIDs:** Configured via `ADMIN_UIDS` (server-side) and `NEXT_PUBLIC_ADMIN_UIDS` (client-side) environment variables, managed centrally via `my-spa/src/app/lib/auth-utils.ts`.
 
 ## 📂 Repository Structure
 ```
@@ -149,6 +149,17 @@ rendimientos-5dbb9-default-rtdb/
 | `BINANCE_SECRET_KEY`| Secret | Binance API Secret |
 | `BINANCE_PROXY_TOKEN`| Secret | Custom token for proxying Binance requests |
 | `PROXY_VM_URL` | String | Cloud Function config variable for proxy endpoint |
+| `ADMIN_UIDS` | String | Comma-separated admin UIDs for server API route authorization |
+| `NEXT_PUBLIC_ADMIN_UIDS` | String | Comma-separated admin UIDs for client component authorization |
+
+## 🛡️ Security Architecture & Hardening
+- **Environment-Based Admin Authorization**: Admin UIDs are configured dynamically via `ADMIN_UIDS` (server) and `NEXT_PUBLIC_ADMIN_UIDS` (client) env variables and verified via `isAdminUser()` and `getAdminUidsServer()` in `my-spa/src/app/lib/auth-utils.ts`.
+- **Dual-Layer Rate Limiting**: Next.js proxy routes (`/api/lndProxy`, `/api/tapdProxy`) enforce dual-tier `RateLimiterMemory` guards:
+  - **IP-Level Limiter**: 30 req/min per IP address to mitigate unauthenticated DDOS/brute-force.
+  - **User-Level Limiter**: 10 req/min per authenticated UID evaluated immediately after Firebase ID token verification.
+- **LND Invoice Input Validation**: `POST /v1/invoices` strictly enforces `0 < value_msat <= 5_000_000_000` (5 billion msat = 5,000,000 sats / 0.05 BTC), rejecting invalid, non-numeric, negative, or excessively large amounts with HTTP 400.
+- **Explicit CORS Controls**: Centralized in `my-spa/src/app/lib/cors.ts` with explicit `OPTIONS` and `HEAD` preflight handlers (`204 No Content`) and `Access-Control-Allow-*` response headers across all proxy routes.
+- **Header-Based Bearer Auth & CSRF Immunity**: API routes validate Firebase ID tokens passed via custom `Authorization: Bearer <idToken>` headers. Custom headers are not automatically attached by web browsers, making cross-origin requests protected against traditional CSRF vulnerabilities.
 
 ## 🔌 LND Infrastructure & Virtual Machines
 - **VM Name:** `lnd-proxy-vm2` (Compute Engine `e2-small` running in `us-central1-a`)
