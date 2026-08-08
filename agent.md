@@ -158,8 +158,10 @@ rendimientos-5dbb9-default-rtdb/
   - **IP-Level Limiter**: 30 req/min per IP address to mitigate unauthenticated DDOS/brute-force.
   - **User-Level Limiter**: 10 req/min per authenticated UID evaluated immediately after Firebase ID token verification.
 - **LND Invoice Input Validation**: `POST /v1/invoices` strictly enforces `0 < value_msat <= 5_000_000_000` (5 billion msat = 5,000,000 sats / 0.05 BTC), rejecting invalid, non-numeric, negative, or excessively large amounts with HTTP 400.
-- **Explicit CORS Controls**: Centralized in `my-spa/src/app/lib/cors.ts` with explicit `OPTIONS` and `HEAD` preflight handlers (`204 No Content`) and `Access-Control-Allow-*` response headers across all proxy routes.
+- **Explicit CORS & Origin Whitelisting**: Centralized domain origin verification across HTTP functions and proxy handlers, allowing requests exclusively from trusted web endpoints (`https://rendimientos-5dbb9.web.app`, `https://rendimientos-5dbb9.firebaseapp.com`, `http://localhost:3000`).
+- **GCP VPC Firewall Restrictions (`allow-proxy`)**: Ingress on port `3000` of `lnd-proxy-vm2` is strictly restricted to Tailscale CIDRs (`100.64.0.0/10`), GCP internal networks (`10.128.0.0/9`), and Google Cloud Run / Functions egress IP ranges (`35.192.0.0/12`, `35.199.0.0/16`, `34.64.0.0/10`), blocking unauthenticated public internet scanners.
 - **Header-Based Bearer Auth & CSRF Immunity**: API routes validate Firebase ID tokens passed via custom `Authorization: Bearer <idToken>` headers. Custom headers are not automatically attached by web browsers, making cross-origin requests protected against traditional CSRF vulnerabilities.
+- **Constant-Time Webhook Verification**: `bancolombiaWebhook` validates `x-webhook-token` using `crypto.timingSafeEqual` to prevent timing side-channel attacks, paired with SHA-256 idempotency deduplication (`processedWebhooks/{hash}`) and 50M COP deposit size caps.
 
 ## 🔌 LND Infrastructure & Virtual Machines
 - **VM Name:** `lnd-proxy-vm2` (Compute Engine `e2-small` running in `us-central1-a`)
@@ -167,7 +169,7 @@ rendimientos-5dbb9-default-rtdb/
 - **Proxy Script:** Node.js app located at `/home/davidleonar/proxy.js` listening on port `3000`.
 - **Process Management:** The proxy runs as a background daemon using `pm2` (started via `pm2 start proxy.js --name proxy`). Its configuration is saved (`pm2 save`) to automatically recover across instance reboots.
 - **Node Routing Logic:**
-  1. Compares incoming `Grpc-Metadata-macaroon` and `x-binance-proxy-token` headers against hardcoded trusted tokens.
+  1. Compares incoming `Grpc-Metadata-macaroon` and `x-binance-proxy-token` headers against environment variables (`process.env.MAIN_MACAROON`, `process.env.EDGE_MACAROON`, `process.env.BINANCE_PROXY_TOKEN`).
   2. If matching the `MAIN_MACAROON`, it forwards the traffic to the Main Node IP (`100.103.9.71:8080`) securely via `./mainnode/tls.cert`.
   3. If matching the `EDGE_MACAROON`, it forwards the traffic to the Edge Node IP (`100.68.2.83:8080`) over `./edgenode/tls.cert`.
   4. If matching the `BINANCE_PROXY_TOKEN`, it strips the token, forces the `Host: api.binance.com` header, and forwards the request to Nginx Proxy Manager on the Edge Node (`100.68.2.83:40080`) via HTTP. This bypasses Cloud Functions geoblocking against Binance US.
