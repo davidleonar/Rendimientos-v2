@@ -1,0 +1,40 @@
+function processBancolombiaAlerts() {
+    // Update this URL with your ACTUAL deployed Cloud Function URL
+    const webhookUrl = "https://us-central1-rendimientos-5dbb9.cloudfunctions.net/bancolombiaWebhook";
+    const secretToken = "david_bancolombia_123";
+
+    // Look for unread alerts specifically containing "Bancolombia: RENDIMIENTOS"
+    const query = 'is:unread subject:"Alertas y Notificaciones" from:alertasynotificaciones@an.notificacionesbancolombia.com "Bancolombia: RENDIMIENTOS"';
+
+    const threads = GmailApp.search(query, 0, 5);
+
+    for (let i = 0; i < threads.length; i++) {
+        const messages = threads[i].getMessages();
+        for (let j = 0; j < messages.length; j++) {
+            const msg = messages[j];
+            if (msg.isUnread()) {
+                const body = msg.getPlainBody();
+                // Double check within the script before hitting the Cloud Function
+                if (body.indexOf("Bancolombia: RENDIMIENTOS") !== -1 || body.indexOf("Bancolombia:\r\nRENDIMIENTOS") !== -1) {
+                    const options = {
+                        method: 'post',
+                        contentType: 'application/json',
+                        headers: {
+                            'x-webhook-token': secretToken
+                        },
+                        payload: JSON.stringify({ emailBody: body })
+                    };
+                    try {
+                        // Push to Firebase Function
+                        UrlFetchApp.fetch(webhookUrl, options);
+                    } catch (e) {
+                        Logger.log("Error sending to Webhook: " + e.toString());
+                    }
+                }
+                // Always mark as read to prevent infinite loop or re-processing
+                msg.markRead();
+            }
+        }
+    }
+}
+

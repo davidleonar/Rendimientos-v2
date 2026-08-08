@@ -2,7 +2,55 @@ const functions = require('firebase-functions');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getDatabase } = require('firebase-admin/database');
-const cors = require('cors')({ origin: true });
+const allowedOrigins = [
+  'https://rendimientos-5dbb9.web.app',
+  'https://rendimientos-5dbb9.firebaseapp.com',
+  'http://localhost:3000',
+  'http://localhost:5000'
+];
+
+const cors = require('cors')({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  }
+});
+
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return String(str || '');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+const rateLimitMap = new Map();
+function isRateLimited(key, maxRequests = 10, windowMs = 60000) {
+  const now = Date.now();
+  const userRecord = rateLimitMap.get(key) || { count: 0, resetTime: now + windowMs };
+  if (now > userRecord.resetTime) {
+    userRecord.count = 1;
+    userRecord.resetTime = now + windowMs;
+    rateLimitMap.set(key, userRecord);
+    return false;
+  }
+  userRecord.count += 1;
+  rateLimitMap.set(key, userRecord);
+  return userRecord.count > maxRequests;
+}
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -213,19 +261,9 @@ exports.lndProxy = onRequest({ secrets: [mainMacaroon] }, (req, res) => {
 
 exports.tapdProxy = onRequest({ secrets: [edgeMacaroon] }, (req, res) => {
   cors(req, res, async () => {
-
-    console.log('tapdProxy request:', {
-      method: req.method,
-      path: req.query.path,
-      xForwardedUrl: req.headers['x-forwarded-url'],
-      headers: req.headers,
-      body: req.body,
-    });
-
     if (!(await verifyToken(req, res))) return;
 
     try {
-
       // Use x-forwarded-url as fallback if path is undefined
       let path = req.query.path;
       if (!path || typeof path !== 'string') {
@@ -243,8 +281,20 @@ exports.tapdProxy = onRequest({ secrets: [edgeMacaroon] }, (req, res) => {
       }
 
       // Validate method
-      if (!['GET', 'POST', 'DELETE'].includes(req.method)) {
-        return res.status(405).json({ error: 'Method not allowed. Use GET, POST, or DELETE.' });
+      if (!['GET', 'POST'].includes(req.method)) {
+        return res.status(405).json({ error: 'Method not allowed. Use GET or POST.' });
+      }
+
+      // Whitelist check for non-admin users
+      const ADMIN_UIDS = [adminUid.value(), 'VldgsZCsJaOTrFT2uR2YvXxUe7o1'];
+      const isAdmin = ADMIN_UIDS.includes(req.user.uid);
+      const pathWithoutQuery = path.split('?')[0];
+
+      if (!isAdmin) {
+        const allowedGET = ['/v1/taproot-assets/assets', '/v1/taproot-assets/assets/leaves'];
+        if (req.method !== 'GET' || !allowedGET.includes(pathWithoutQuery)) {
+          return res.status(403).json({ error: 'Forbidden: Admin access required.' });
+        }
       }
 
       // 3. Parse JSON body (only for POST)
@@ -259,9 +309,8 @@ exports.tapdProxy = onRequest({ secrets: [edgeMacaroon] }, (req, res) => {
         }
       }
 
-      //Forward to TAPD
+      // Forward to TAPD
       const lndUrlFinal = `${lndUrl.value()}${path.startsWith('/') ? '' : '/'}${path}`;
-      console.log('Fetching TAPD:', lndUrlFinal);
 
       const tapdResponse = await fetch(lndUrlFinal, {
         method: req.method,
@@ -270,36 +319,32 @@ exports.tapdProxy = onRequest({ secrets: [edgeMacaroon] }, (req, res) => {
           'Content-Type': 'application/json',
         },
         body: body ? JSON.stringify(body) : undefined,
-        //agent,
         timeout: 10000, // 10s timeout
       }).catch(err => {
         console.error('Fetch error:', err);
-        throw err; // Re-throw to catch block
-      });;
+        throw err;
+      });
 
-      //Read response
+      // Read response
       let tapdData;
       const contentType = tapdResponse.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         tapdData = await tapdResponse.json();
       } else {
         const text = await tapdResponse.text();
-        console.error('TAPD non-JSON response:', text);
+        console.error('TAPD non-JSON response status:', tapdResponse.status);
         return res.status(502).json({
           error: 'Invalid response from TAPD',
-          details: text.substring(0, 200),
         });
       }
 
-      //Forward success
-      console.log('tapdData Response:', tapdData);
+      // Forward success
       res.status(tapdResponse.status).json(tapdData);
 
     } catch (err) {
-      console.error('tapdProxy error:', err);
+      console.error('tapdProxy error:', err.message || err);
       res.status(500).json({
         error: 'Internal proxy error',
-        details: err.message,
       });
     }
   });
@@ -348,17 +393,17 @@ async function sendWithdrawalEmailRequest(withdrawalData, type) {
       </div>
       <p><strong>Se ha recibido una solicitud de retiro!</strong></p>
       <ul>
-        <li><strong>User ID:</strong> ${withdrawalData.userId || 'N/A'}</li>
-        <li><strong>Name:</strong> ${withdrawalData.name || 'N/A'}</li>
-        <li><strong>Email:</strong> ${withdrawalData.userEmail || 'N/A'}</li>
-        <li><strong>Amount:</strong> ${withdrawalData.amount || 'N/A'}</li>
-        <li><strong>Option:</strong> ${withdrawalData.option || 'N/A'}</li>
-        <li><strong>Requested BTC:</strong> ${withdrawalData.requestedBtcAmount || 'N/A'}</li>
-        <li><strong>Fee (1%):</strong> ${withdrawalData.fee || 'N/A'}</li>
-        <li><strong>Total BTC to Deduct:</strong> ${withdrawalData.totalBtcToDeduct || 'N/A'}</li>
-        <li><strong>Bank Data:</strong> ${withdrawalData.bankData || 'N/A'}</li>
-        <li><strong>Bank Name:</strong> ${withdrawalData.bankName || 'N/A'}</li>
-        <li><strong>Country:</strong> ${withdrawalData.country || 'N/A'}</li>
+        <li><strong>User ID:</strong> ${escapeHtml(withdrawalData.userId || 'N/A')}</li>
+        <li><strong>Name:</strong> ${escapeHtml(withdrawalData.name || 'N/A')}</li>
+        <li><strong>Email:</strong> ${escapeHtml(withdrawalData.userEmail || 'N/A')}</li>
+        <li><strong>Amount:</strong> ${escapeHtml(withdrawalData.amount || 'N/A')}</li>
+        <li><strong>Option:</strong> ${escapeHtml(withdrawalData.option || 'N/A')}</li>
+        <li><strong>Requested BTC:</strong> ${escapeHtml(withdrawalData.requestedBtcAmount || 'N/A')}</li>
+        <li><strong>Fee (1%):</strong> ${escapeHtml(withdrawalData.fee || 'N/A')}</li>
+        <li><strong>Total BTC to Deduct:</strong> ${escapeHtml(withdrawalData.totalBtcToDeduct || 'N/A')}</li>
+        <li><strong>Bank Data:</strong> ${escapeHtml(withdrawalData.bankData || 'N/A')}</li>
+        <li><strong>Bank Name:</strong> ${escapeHtml(withdrawalData.bankName || 'N/A')}</li>
+        <li><strong>Country:</strong> ${escapeHtml(withdrawalData.country || 'N/A')}</li>
         <li><strong>Timestamp:</strong> ${new Date().toISOString()}</li>
       </ul>
       <p><strong>¡Favor procesar el retiro prontamente!</strong></p>
@@ -397,21 +442,21 @@ async function sendUserWithdrawalEmail(withdrawalData) {
       <div style="text-align: center; margin-bottom: 20px;">
         <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
       </div>
-      <p>Hello ${withdrawalData.name || 'User'},</p>
+      <p>Hello ${escapeHtml(withdrawalData.name || 'User')},</p>
       <p><strong>Has solicitado un retiro de BTC!</strong></p>
       <ul>
-        <li><strong>Amount:</strong> ${withdrawalData.amount || 'N/A'}</li>
-        <li><strong>Option:</strong> ${withdrawalData.option || 'N/A'}</li>
-        <li><strong>Requested BTC:</strong> ${withdrawalData.requestedBtcAmount || 'N/A'}</li>
-        <li><strong>Fee (1%):</strong> ${withdrawalData.fee || 'N/A'}</li>
-        <li><strong>Total BTC to Deduct:</strong> ${withdrawalData.totalBtcToDeduct || 'N/A'}</li>
+        <li><strong>Amount:</strong> ${escapeHtml(withdrawalData.amount || 'N/A')}</li>
+        <li><strong>Option:</strong> ${escapeHtml(withdrawalData.option || 'N/A')}</li>
+        <li><strong>Requested BTC:</strong> ${escapeHtml(withdrawalData.requestedBtcAmount || 'N/A')}</li>
+        <li><strong>Fee (1%):</strong> ${escapeHtml(withdrawalData.fee || 'N/A')}</li>
+        <li><strong>Total BTC to Deduct:</strong> ${escapeHtml(withdrawalData.totalBtcToDeduct || 'N/A')}</li>
         <ul>
-            <li><strong>Precio BTC/USDT:</strong> ${withdrawalData.receipt.btcUsdt || 'N/A'}</li>
-            <li><strong>Precio USDT/COP:</strong> ${withdrawalData.receipt.usdtCop || 'N/A'}</li>
+            <li><strong>Precio BTC/USDT:</strong> ${escapeHtml(withdrawalData.receipt?.btcUsdt || 'N/A')}</li>
+            <li><strong>Precio USDT/COP:</strong> ${escapeHtml(withdrawalData.receipt?.usdtCop || 'N/A')}</li>
         </ul>
-        <li><strong>Bank Data:</strong> ${withdrawalData.bankData || 'N/A'}</li>
-        <li><strong>Bank Name:</strong> ${withdrawalData.bankName || 'N/A'}</li>
-        <li><strong>Country:</strong> ${withdrawalData.country || 'N/A'}</li>
+        <li><strong>Bank Data:</strong> ${escapeHtml(withdrawalData.bankData || 'N/A')}</li>
+        <li><strong>Bank Name:</strong> ${escapeHtml(withdrawalData.bankName || 'N/A')}</li>
+        <li><strong>Country:</strong> ${escapeHtml(withdrawalData.country || 'N/A')}</li>
       </ul>
       <p>Pronto recibiras los fondos!</p>
     `,
@@ -522,6 +567,10 @@ exports.notifyWithdrawalSettled = onValueWritten(
 
     // Only trigger if status just changed to 'settled' or was created as 'settled'
     if (after.status === 'settled' && before.status !== 'settled') {
+      if (after.balanceAlreadyDeducted) {
+        console.log(`BTC balance for user ${event.params.uid} was already reserved/deducted during transaction broadcast. Skipping duplicate deduction.`);
+        return null;
+      }
       // Update BTC Balance and avgBuyPrice
       const btcAmountToDeduct = parseFloat(after.totalBtcToDeduct) || 0;
       if (btcAmountToDeduct > 0) {
@@ -633,6 +682,10 @@ async function getBinanceUsdtBalance() {
 }
 
 async function executeBinanceBuyOrder(usdtAmount) {
+  const MAX_BUY_USDT = 10000; // $10,000 USDT safety cap per order
+  if (typeof usdtAmount !== 'number' || isNaN(usdtAmount) || usdtAmount < 10 || usdtAmount > MAX_BUY_USDT) {
+    throw new Error(`Invalid Binance buy order amount: ${usdtAmount} USDT (Allowed range: 10 - ${MAX_BUY_USDT} USDT)`);
+  }
   const endpoint = '/api/v3/order';
   const timestamp = Date.now();
   // quoteOrderQty defines how much USDT we want to spend to buy BTC
@@ -687,9 +740,9 @@ async function sendUserCryptoDepositEmail(userEmail, userName, copAmount, btcAmo
           <div style="text-align: center; margin-bottom: 20px;">
             <img src="https://rendimientos.net/pig-180-nobg.png" alt="Rendimientos.net Logo" width="180" style="display: block; margin: 0 auto;">
           </div>
-          <p>Hola ${userName || 'User'},</p>
-          <p><strong>¡Hemos recibido exitosamente tu depósito de $${formattedCop} COP!</strong></p>
-          <p>¡Tu billetera de BTC ha sido acreditada con ${btcAmount} BTC!</p>
+          <p>Hola ${escapeHtml(userName || 'User')},</p>
+          <p><strong>¡Hemos recibido exitosamente tu depósito de $${escapeHtml(formattedCop)} COP!</strong></p>
+          <p>¡Tu billetera de BTC ha sido acreditada con ${escapeHtml(btcAmount)} BTC!</p>
           <p>Inicia sesión en Rendimientos.net para ver tu saldo actualizado.</p>
         `,
   };
@@ -804,15 +857,17 @@ async function sendDepositEmailToAdmin(depositData, matched) {
 }
 
 exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, binanceSecretKey, binanceProxyToken] }, async (req, res) => {
-  // Basic token security check
+  // Token security check (Header x-webhook-token or Bearer or query param fallback)
   const secretToken = webhookSecret.value();
-  if (req.query.token !== secretToken) {
+  const providedToken = req.headers['x-webhook-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '') || req.query.token;
+
+  if (!providedToken || !timingSafeEqualStr(providedToken, secretToken)) {
     return res.status(403).send('Forbidden: Invalid token');
   }
 
   const emailBody = req.body.emailBody;
-  if (!emailBody) {
-    return res.status(400).send('Missing email body');
+  if (!emailBody || typeof emailBody !== 'string') {
+    return res.status(400).send('Missing or invalid email body');
   }
 
   if (!emailBody.includes("Bancolombia:") || !emailBody.includes("RENDIMIENTOS")) {
@@ -820,33 +875,53 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
     return res.status(200).send("Ignored: Not a RENDIMIENTOS deposit");
   }
 
-  console.log('Received email body:', emailBody);
   // Parse using Regex
-  // Example string: 
-  // Bancolombia: RENDIMIENTOS, recibiste un pago de SUSANA ARBOLEDA CEBALLOS por $2,000.00 en tu cuenta *9328 conectado a la llave 0092325247 el 28/03/2026 a las 18:34. Con codigo QR es facil y de una. Dudas al 018000912345.
-
   const nameMatch = emailBody.match(/pago de (.*?) por/i);
   const amountMatch = emailBody.match(/por \$([0-9,.,\s]+) en tu cuenta/i);
   const dateMatch = emailBody.match(/el (\d{2}\/\d{2}\/\d{4})/i);
   const timeMatch = emailBody.match(/a las (\d{2}:\d{2})/i);
 
   if (!nameMatch || !amountMatch) {
-    console.error('Regex failed to match name or amount in:', emailBody);
+    console.error('Regex failed to match name or amount in Bancolombia notification');
     return res.status(400).send('Could not parse Bancolombia format');
   }
 
   const parsedName = nameMatch[1].trim().toUpperCase();
-  const parsedAmountStr = amountMatch[1].trim(); // Extracting amount as string
+  const parsedAmountStr = amountMatch[1].trim();
   const numericAmount = parseFloat(parsedAmountStr.replace(/,/g, ''));
   const parsedDate = dateMatch ? dateMatch[1] : null;
   const parsedTime = timeMatch ? timeMatch[1] : null;
 
-  // Search RTDB balances for a matching name
+  // Sanity check on parsed amount (Max 50M COP per single automated deposit)
+  const MAX_SINGLE_DEPOSIT_COP = 50000000;
+  if (isNaN(numericAmount) || numericAmount <= 0 || numericAmount > MAX_SINGLE_DEPOSIT_COP) {
+    console.error(`Invalid or excessive deposit amount: ${numericAmount} COP`);
+    return res.status(400).send('Invalid or out-of-bounds deposit amount');
+  }
+
+  // Idempotency / Deduplication check via RTDB
+  const emailHash = crypto.createHash('sha256').update(`${parsedName}_${numericAmount}_${parsedDate}_${parsedTime}`).digest('hex');
+  const processedRef = rtdb.ref(`processedWebhooks/${emailHash}`);
+  const processedSnap = await processedRef.once('value');
+
+  if (processedSnap.exists()) {
+    console.log(`Duplicate webhook notification skipped for hash ${emailHash}`);
+    return res.status(200).send('Ignored: Duplicate notification');
+  }
+
+  // Mark hash as processed immediately
+  await processedRef.set({
+    timestamp: admin.database.ServerValue.TIMESTAMP,
+    parsedName,
+    amount: numericAmount
+  });
+
+  // Search RTDB balances for a matching user name
   const balancesSnap = await rtdb.ref('balances').once('value');
   const balances = balancesSnap.val() || {};
 
   let matchedUid = null;
-  // Match using the first two words (case-insensitive)
+  let matchCount = 0;
   const parsedNameTokens = parsedName.split(/\s+/).slice(0, 2).join(' ');
   for (const key in balances) {
     const userBalance = balances[key];
@@ -854,30 +929,34 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
       const dbNameTokens = userBalance.name.trim().toUpperCase().split(/\s+/).slice(0, 2).join(' ');
       if (dbNameTokens === parsedNameTokens && parsedNameTokens.length > 0) {
         matchedUid = userBalance.uid;
-        break;
+        matchCount++;
       }
     }
   }
 
+  // If multiple candidates share the exact same first 2 name tokens, force manual admin review
+  if (matchCount > 1) {
+    console.warn(`Ambiguous name match (${matchCount} candidates) for name: ${parsedName}. Routing to unassigned.`);
+    matchedUid = null;
+  }
+
   const depositData = {
     parsedName,
-    amount: numericAmount, // Stored as a pure number (e.g. 12000 instead of "12,000.00")
+    amount: numericAmount,
     date: parsedDate,
     time: parsedTime,
-    rawEmail: emailBody,
     timestamp: admin.database.ServerValue.TIMESTAMP,
-    status: 'pending', // Initialize as pending
+    status: 'pending',
     userNotified: false
   };
 
   try {
     if (matchedUid) {
-      console.log(`Matched incoming deposit to user UID: ${matchedUid}`);
+      console.log(`Matched incoming deposit for ${parsedName} to user UID: ${matchedUid}`);
       depositData.uid = matchedUid;
       const newRef = rtdb.ref(`deposits/${matchedUid}`).push();
       await newRef.set(depositData);
 
-      // Keep a master log
       await rtdb.ref(`deposits/all/${newRef.key}`).set(depositData);
 
       await sendDepositEmailToAdmin(depositData, true);
@@ -895,7 +974,6 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
 
           if (requiredUsdt < 10) {
             console.log('Deposit below 10 USDT threshold. Skipping crypto buy.');
-            // For deposits below 10 USDT, mark as settled directly (but with 0 BTC bought)
             await newRef.update({ status: 'settled' });
             await rtdb.ref(`deposits/all/${newRef.key}`).update({ status: 'settled' });
           } else {
@@ -904,7 +982,6 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
 
             if (availableUsdt < requiredUsdt) {
               console.warn('Insufficient USDT liquidity on Binance.');
-              // Send warning to Admin
               const transporter = nodemailer.createTransport({
                 service: 'gmail',
                 auth: { user: smtpUser.value(), pass: smtpPass.value() }
@@ -917,7 +994,6 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
               });
             } else {
               console.log('Sufficient liquidity. Executing MARKET BUY...');
-              // Execute Binance Buy (format to 2 decimals usually for quoteOrderQty)
               const formattedUsdt = Math.floor(requiredUsdt * 100) / 100;
               const buyResult = await executeBinanceBuyOrder(formattedUsdt);
               btcBought = buyResult.btcBought;
@@ -937,7 +1013,7 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
           }
         }
       } catch (cryptoErr) {
-        console.error('Error in crypto buy process:', cryptoErr);
+        console.error('Error in crypto buy process:', cryptoErr.message || cryptoErr);
         try {
           const transporter = nodemailer.createTransport({
             service: 'gmail',
@@ -954,13 +1030,11 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
         }
       }
 
-      // Finalize status: only set status to settled after successful purchase
       if (cryptoBuySuccess && marketBuyInfo) {
         console.log('Finalizing deposit: Setting status to settled and adding marketBuy info...');
         await newRef.update({ status: 'settled', marketBuy: marketBuyInfo });
         await rtdb.ref(`deposits/all/${newRef.key}`).update({ status: 'settled', marketBuy: marketBuyInfo });
 
-        // Notify User
         try {
           const userRecord = await admin.auth().getUser(matchedUid);
           if (userRecord && userRecord.email) {
@@ -983,7 +1057,7 @@ exports.bancolombiaWebhook = onRequest({ secrets: [smtpPass, binanceApiKey, bina
 
     res.status(200).send('Successfully processed integration');
   } catch (err) {
-    console.error('Firebase save error:', err);
+    console.error('Firebase save error:', err.message || err);
     res.status(500).send('Database error');
   }
 });
@@ -1220,8 +1294,8 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
       });
 
     } catch (err) {
-      console.error('Manual deposit function error:', err);
-      res.status(500).send('Internal Server Error: ' + err.message);
+      console.error('Manual deposit function error:', err.message || err);
+      res.status(500).send('Internal Server Error');
     }
   });
 });
@@ -1346,8 +1420,8 @@ exports.createManualWithdrawal = onRequest({ secrets: [smtpPass] }, (req, res) =
       });
 
     } catch (err) {
-      console.error('Manual withdrawal function error:', err);
-      res.status(500).send('Internal Server Error: ' + err.message);
+      console.error('Manual withdrawal function error:', err.message || err);
+      res.status(500).send('Internal Server Error');
     }
   });
 });
@@ -1357,14 +1431,18 @@ exports.testBinanceProxy = onRequest({ secrets: [binanceApiKey, binanceSecretKey
     const balance = await getBinanceUsdtBalance();
     res.status(200).send(`Proxy connection successful! Available USDT balance: ${balance}`);
   } catch (error) {
-    console.error('Test Proxy Error:', error);
-    res.status(500).send(`Error testing proxy: ${error.message}`);
+    console.error('Test Proxy Error:', error.message || error);
+    res.status(500).send('Error testing proxy');
   }
 });
 
 exports.getNewDepositAddress = onRequest({ secrets: ['MAIN_LND_MACAROON'] }, (req, res) => {
   cors(req, res, async () => {
     if (!(await verifyToken(req, res))) return;
+
+    if (isRateLimited(`address_${req.user.uid}`, 5, 60000)) {
+      return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
 
     if (req.method !== 'POST') {
       return res.status(405).send('Method Not Allowed. Use POST.');
@@ -1373,7 +1451,7 @@ exports.getNewDepositAddress = onRequest({ secrets: ['MAIN_LND_MACAROON'] }, (re
     try {
       const uid = req.user.uid;
       const lndUrlFinal = `${lndUrl.value()}/v1/newaddress?type=WITNESS_PUBKEY_HASH`;
-      console.log(`Generating new address for user ${uid} at ${lndUrlFinal}`);
+      console.log(`Generating new address for user ${uid}`);
 
       const response = await fetch(lndUrlFinal, {
         method: 'GET',
@@ -1384,8 +1462,8 @@ exports.getNewDepositAddress = onRequest({ secrets: ['MAIN_LND_MACAROON'] }, (re
 
       if (!response.ok) {
         const text = await response.text();
-        console.error('LND NewAddress error:', response.status, text);
-        return res.status(502).json({ error: 'Failed to generate address from node', details: text });
+        console.error('LND NewAddress error:', response.status);
+        return res.status(502).json({ error: 'Failed to generate address from node' });
       }
 
       const data = await response.json();
@@ -1406,12 +1484,12 @@ exports.getNewDepositAddress = onRequest({ secrets: ['MAIN_LND_MACAROON'] }, (re
         generatedAt: Date.now()
       });
 
-      console.log(`Successfully generated and mapped address ${address} for user ${uid}`);
+      console.log(`Successfully generated and mapped address for user ${uid}`);
       return res.status(200).json({ success: true, address });
 
     } catch (error) {
-      console.error('Error in getNewDepositAddress:', error);
-      return res.status(500).send('Internal Server Error: ' + error.message);
+      console.error('Error in getNewDepositAddress:', error.message || error);
+      return res.status(500).send('Internal Server Error');
     }
   });
 });
@@ -1419,6 +1497,10 @@ exports.getNewDepositAddress = onRequest({ secrets: ['MAIN_LND_MACAROON'] }, (re
 exports.processOnChainWithdrawal = onRequest({ secrets: ['MAIN_LND_MACAROON', 'SMTP_PASS'] }, (req, res) => {
   cors(req, res, async () => {
     if (!(await verifyToken(req, res))) return;
+
+    if (isRateLimited(`withdrawal_${req.user.uid}`, 5, 60000)) {
+      return res.status(429).json({ error: 'Too many withdrawal requests. Please try again later.' });
+    }
 
     if (req.method !== 'POST') {
       return res.status(405).send('Method Not Allowed. Use POST.');
@@ -1477,15 +1559,24 @@ exports.processOnChainWithdrawal = onRequest({ secrets: ['MAIN_LND_MACAROON', 'S
       const requestedBtc = parseFloat((amountSats / 100000000).toFixed(8));
       const feeBtc = parseFloat(((platformFeeSats + networkFeeSats) / 100000000).toFixed(8));
 
-      // 6. Balance Check (read-only, deduction is performed when the withdrawals record settles)
-      const balanceSnap = await rtdb.ref(`balances/${uid}/BTCbalance`).once('value');
-      const currentBtc = parseFloat(balanceSnap.val() || 0);
+      // 6. Balance Reservation (Atomic Transaction)
+      let reservedBalanceSuccess = false;
+      let availableBtcBefore = 0;
 
-      if (currentBtc < totalDeductBtc) {
-        return res.status(400).json({ error: `Insufficient BTC balance. Required: ${totalDeductBtc} BTC, Available: ${currentBtc} BTC.` });
+      const txResult = await rtdb.ref(`balances/${uid}/BTCbalance`).transaction((currentValue) => {
+        availableBtcBefore = parseFloat(currentValue || 0);
+        if (availableBtcBefore < totalDeductBtc) {
+          return; // Abort transaction if balance is insufficient
+        }
+        return parseFloat((availableBtcBefore - totalDeductBtc).toFixed(8));
+      });
+
+      if (!txResult.committed) {
+        return res.status(400).json({ error: `Insufficient BTC balance. Required: ${totalDeductBtc} BTC, Available: ${availableBtcBefore} BTC.` });
       }
+      reservedBalanceSuccess = true;
 
-      console.log(`User ${uid} has sufficient balance (${currentBtc} BTC). Broadcasting tx to ${address}...`);
+      console.log(`User ${uid} balance atomically reserved (${totalDeductBtc} BTC). Broadcasting tx to ${address}...`);
 
       // 7. Call LND SendCoins REST API
       const lndUrlFinal = `${lndUrl.value()}/v1/transactions`;
@@ -1519,7 +1610,17 @@ exports.processOnChainWithdrawal = onRequest({ secrets: ['MAIN_LND_MACAROON', 'S
         }
       } catch (broadcastErr) {
         console.error('LND transaction broadcast failed:', broadcastErr.message);
-        return res.status(502).json({ error: 'Failed to broadcast transaction via LND node', details: broadcastErr.message });
+
+        // Roll back reserved balance
+        if (reservedBalanceSuccess) {
+          await rtdb.ref(`balances/${uid}/BTCbalance`).transaction((val) => {
+            const current = parseFloat(val || 0);
+            return parseFloat((current + totalDeductBtc).toFixed(8));
+          });
+          console.log(`Rollback: Restored ${totalDeductBtc} BTC to user ${uid} balance.`);
+        }
+
+        return res.status(502).json({ error: 'Failed to broadcast transaction via LND node' });
       }
 
       console.log(`Successfully broadcasted transaction ${txid} for withdrawal.`);
@@ -1530,7 +1631,7 @@ exports.processOnChainWithdrawal = onRequest({ secrets: ['MAIN_LND_MACAROON', 'S
       const usdtCop = prices.usdtCop || 0;
       const copEquivalent = Math.round(requestedBtc * btcUsdt * usdtCop);
 
-      // 9. Write settled withdrawal record (this triggers notifyWithdrawalSettled to deduct the balance)
+      // 9. Write settled withdrawal record with balanceAlreadyDeducted: true
       const withdrawalRef = rtdb.ref(`withdrawals/${uid}`).push();
       const requestId = withdrawalRef.key;
 
@@ -1546,6 +1647,7 @@ exports.processOnChainWithdrawal = onRequest({ secrets: ['MAIN_LND_MACAROON', 'S
         requestedBtcAmount: requestedBtc,
         fee: feeBtc,
         totalBtcToDeduct: totalDeductBtc,
+        balanceAlreadyDeducted: true,
         bankData: address,
         bankName: 'Bitcoin On-Chain',
         option: 'btcOnChain',
@@ -1565,8 +1667,8 @@ exports.processOnChainWithdrawal = onRequest({ secrets: ['MAIN_LND_MACAROON', 'S
       return res.status(200).json({ success: true, txid, requestId });
 
     } catch (error) {
-      console.error('Error in processOnChainWithdrawal:', error);
-      return res.status(500).send('Internal Server Error: ' + error.message);
+      console.error('Error in processOnChainWithdrawal:', error.message || error);
+      return res.status(500).json({ error: 'Internal Server Error during on-chain processing' });
     }
   });
 });

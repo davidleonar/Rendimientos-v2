@@ -127,7 +127,7 @@ rendimientos-5dbb9-default-rtdb/
 > **Note:** `cryptoBalances/` node has been completely deprecated and removed from the database rules, backend Cloud Functions, manual scripts, and the frontend SPA UI. All balances are tracked natively in the `balances/` node.
 
 ## 🔐 RTDB Security Rules (`database.rules.json`)
-- **`balances`**: Read and write are globally enabled (`true`/`true`) for balance tracking.
+- **`balances`**: Read access is restricted to authenticated users for their own UID (`$uid === auth.uid`) and authorized admins (`5XgksHrgmyeGqqKFYGVjQVM0KGl1`, `VldgsZCsJaOTrFT2uR2YvXxUe7o1`). Client write access is completely disabled (`.write: false`); all balance updates are performed server-side via Cloud Function admin SDK triggers.
 - **`withdrawals`**: Admin can read/write the entire node. Authenticated users can read/write only their own `{uid}` subtree.
 - **`deposits`**: Admin can read/write the entire node. Authenticated users can read/write only their own `{uid}` subtree.
 - **`unassignedDeposits`**: Admin-only read/write.

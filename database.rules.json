@@ -3,8 +3,12 @@
     ".read": false,
     ".write": false,
     "balances": {
-      ".read": true,
-      ".write": true
+      ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
+      ".write": false,
+      "$uid": {
+        ".read": "auth != null && $uid === auth.uid",
+        ".write": false
+      }
     },
     "withdrawals": {
       ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
