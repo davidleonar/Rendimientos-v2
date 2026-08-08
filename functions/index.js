@@ -165,7 +165,7 @@ exports.lndProxy = onRequest({ secrets: [mainMacaroon] }, (req, res) => {
 
       if (!isAdmin) {
         if (req.method === 'POST') {
-          const allowedPOST = ['/v1/invoices', '/v1/channels/transactions'];
+          const allowedPOST = ['/v1/invoices', '/v1/channels/transactions', '/v2/router/send'];
           if (!allowedPOST.includes(pathWithoutQuery)) {
             return res.status(403).json({ error: 'Forbidden: Admin access required.' });
           }
@@ -217,20 +217,36 @@ exports.lndProxy = onRequest({ secrets: [mainMacaroon] }, (req, res) => {
       }).catch(err => {
         console.error('Fetch error:', err);
         throw err; // Re-throw to catch block
-      });;
+      });
 
-      // 5. Read response
+      // 5. Read response (handles both single JSON objects and streaming NDJSON responses from LND)
+      const text = await lndResponse.text();
       let lndData;
-      const contentType = lndResponse.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        lndData = await lndResponse.json();
-      } else {
-        const text = await lndResponse.text();
-        console.error('LND non-JSON response:', text);
-        return res.status(502).json({
-          error: 'Invalid response from LND',
-          details: text.substring(0, 200),
-        });
+      try {
+        lndData = JSON.parse(text);
+      } catch (parseErr) {
+        // Handle streaming NDJSON (multiple JSON objects separated by newlines, e.g. /v2/router/send)
+        const lines = text.trim().split('\n').filter(Boolean);
+        if (lines.length > 0) {
+          try {
+            const parsedLines = lines.map(line => JSON.parse(line));
+            // Find the last parsed object containing result or status, or pick the last object
+            lndData = parsedLines[parsedLines.length - 1];
+            if (lndData && lndData.result) {
+              lndData = lndData.result;
+            }
+          } catch (lineErr) {
+            console.error('LND non-JSON response:', text);
+            return res.status(502).json({
+              error: 'Invalid JSON response from LND',
+              details: text.substring(0, 200),
+            });
+          }
+        } else {
+          return res.status(502).json({
+            error: 'Empty response from LND',
+          });
+        }
       }
 
       // 6. Forward success
