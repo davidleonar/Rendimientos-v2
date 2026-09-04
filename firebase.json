@@ -36,6 +36,34 @@
         "function": "tapdProxy"
       },
       {
+        "source": "/api/createInvoice",
+        "function": "createInvoice"
+      },
+      {
+        "source": "/api/checkInvoiceSettlement",
+        "function": "checkInvoiceSettlement"
+      },
+      {
+        "source": "/api/processLightningWithdrawal",
+        "function": "processLightningWithdrawal"
+      },
+      {
+        "source": "/api/processOnChainWithdrawal",
+        "function": "processOnChainWithdrawal"
+      },
+      {
+        "source": "/api/getNewDepositAddress",
+        "function": "getNewDepositAddress"
+      },
+      {
+        "source": "/api/createDepositIntent",
+        "function": "createDepositIntent"
+      },
+      {
+        "source": "/api/cancelDepositIntent",
+        "function": "cancelDepositIntent"
+      },
+      {
         "source": "/_next/**",
         "function": "nextServer"
       },

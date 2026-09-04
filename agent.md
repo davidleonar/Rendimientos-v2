@@ -51,14 +51,18 @@ The application defines the following 2nd Gen HTTP/Eventarc Cloud Functions:
 * ~~**`getDataById`**~~: **DEPRECATED & REMOVED.** Securely fetched balance data from RTDB.
 * ~~**`syncSheetsToRTDB`**~~: **DEPRECATED & REMOVED.** Google Sheets is no longer the source of truth. Historical movements were migrated to native RTDB `/deposits` and `/withdrawals` nodes. RTDB is now the single source of truth for all balance and transaction data.
 
-### LND / Taproot Proxies
-* **`lndProxy`**: Secure proxy forwarding JSON requests to the Main Lightning Node using `MAIN_LND_MACAROON` secret. Supports GET/POST. Uses `x-forwarded-url` header fallback for path resolution. Non-admin users are strictly whitelisted to specific endpoints (`/v1/invoices`, `/v1/channels/transactions`, and `/v2/router/send` for POST; `/v1/invoice/*` and `/v1/fees` for GET) to prevent unauthorized transaction execution.
+### LND / Taproot Proxies & Lightning Settlement Engine
+* **`lndProxy`**: Secure proxy forwarding JSON requests to the Main Lightning Node using `MAIN_LND_MACAROON` secret. Supports GET/POST. Uses `x-forwarded-url` header fallback for path resolution. Non-admin users are strictly whitelisted to read-only or safe creation endpoints (`/v1/invoices` and `/v1/channels/transactions` for POST; `/v1/invoice/*` and `/v1/fees` for GET) to prevent unauthorized transaction execution. Direct router sending (`/v2/router/send`) is strictly restricted to server-side functions and admins.
 * **`tapdProxy`**: Secure proxy forwarding to the Edge Taproot Assets node using `EDGE_TAPD_MACAROON` secret. Supports GET/POST/DELETE. Requires Firebase auth (`verifyToken`).
+* **`createInvoice`** (Authenticated): Server-side Lightning invoice generation. Enforces rate limits (10/min), validates amount bounds (1 to 5,000,000 sats), computes live COP/USD price equivalents, generates bolt11 via LND `POST /v1/invoices`, and records persistent invoices in `/invoices/{uid}/{paymentHash}` and `/pendingInvoices/{paymentHash}`.
+* **`checkInvoiceSettlement`** (Authenticated): On-demand verification endpoint allowing active web sessions to trigger immediate (<1s) settlement verification and crediting without waiting for the scheduled background sync.
+* **`syncLightningInvoices`** (Scheduled): Runs every 1 minute. Reconciles all pending invoices in `/pendingInvoices` against LND `GET /v1/invoice/{paymentHash}`. When an invoice settles, updates `/invoices/{uid}/{paymentHash}`, writes to `/deposits/{uid}/{paymentHash}` (triggering `onDepositSettled` to atomically increment BTC balance and update average buy prices), creates an in-app notification in `/notifications/{uid}`, sends confirmation email to the user, and removes the invoice from `/pendingInvoices`. Automatically cleans up expired invoices.
+* **`processLightningWithdrawal`** (Authenticated): Server-side atomic Lightning withdrawal execution. Validates invoice via LND (`GET /v1/payreq`), performs atomic balance reservation on `balances/{uid}/BTCbalance` via database transaction, sends payment via LND Router (`POST /v2/router/send`), automatically rolls back reserved balance on routing failure, and on success finalizes the settled record in `withdrawals/{uid}/{requestId}`, proportionally reduces invested totals, dispatches in-app notification to `notifications/{uid}`, and sends email confirmation.
 
 ### Bitcoin On-Chain Management
 * **`getNewDepositAddress`** (Authenticated): Calls the LND node (`GET /v1/newaddress?type=WITNESS_PUBKEY_HASH`) to generate a Bech32 Native Segwit address. Maps it in `/btcAddresses/{address}` and updates the user's balances profile in RTDB.
-* **`processOnChainWithdrawal`** (Authenticated): Processes Bitcoin on-chain withdrawals. Validates the address via `bitcoin-address-validation`, fetches real-time fee estimations from the Mempool.space precise fee API, performs atomic balance verification (deducting a 1% platform fee + estimated network fee based on a 148 vBytes estimate), and broadcasts the transaction via LND (`POST /v1/transactions`).
-* **`syncOnChainDeposits`** (Scheduled): Runs every 5 minutes. Fetches on-chain transactions from the LND node, checks if the destination addresses belong to users, and creates/updates deposit records in RTDB. Credits the balance and notifies the user via email after exactly **1 block confirmation**.
+* **`processOnChainWithdrawal`** (Authenticated): Server-side atomic Bitcoin on-chain withdrawal execution. Validates the address via `bitcoin-address-validation`, fetches real-time fee estimations from Mempool.space, performs atomic balance reservation on `balances/{uid}/BTCbalance` via database transaction (deducting 1% platform fee + estimated network fee based on 148 vBytes), and broadcasts via LND (`POST /v1/transactions`). On broadcast failure, automatically refunds reserved balance. On broadcast success, records the settled withdrawal (`balanceAlreadyDeducted: true`), proportionally reduces `totalCopInvested` and `totalUsdtInvested` to maintain cost-basis and yield integrity (`avgBuyPrice` and `avgBuyPriceUsdt`), dispatches in-app notification to `/notifications/{uid}` (`type: 'onchain_withdrawal'`), and sends email receipt.
+* **`syncOnChainDeposits`** (Scheduled): Runs every 2 minutes. Fetches on-chain transactions from the LND node and maps destination addresses to user profiles. Features real-time **0-conf mempool detection**: records unconfirmed incoming transactions to `/deposits/{uid}/{txid}` as `status: 'pending'`, triggering the frontend live confirmation tracker and dispatching an in-app notification (`type: 'onchain_detected'`). When transaction achieves **1 block confirmation**, transitions status to `'settled'`, notifies the user via email and in-app notification (`type: 'onchain_deposit'`), and triggers `onDepositSettled` to atomically increment `BTCbalance` and update average buy prices.
 
 ### Balance Update Triggers
 * **`onDepositSettled`**: `onValueWritten` trigger on `deposits/{uid}/{depositId}`. Explicitly configured with `512MiB` memory limit. When a deposit's status changes to `'settled'`, atomically increments `balances/{uid}/BTCbalance` using a database transaction based on `marketBuy.btcBought`. Also increments `totalCopInvested` (by fiat deposited) and `totalUsdtInvested` (by USD spent), recomputing `avgBuyPrice` (weighted average buy price in COP/BTC) and `avgBuyPriceUsdt` (weighted average buy price in USDT/BTC based on execution-time rates).
@@ -72,11 +76,16 @@ The application defines the following 2nd Gen HTTP/Eventarc Cloud Functions:
 * **`createManualDeposit`** (Authenticated): Allows admins to manually record a deposit for a user. It computes the BTC equivalent by looking up the historical or current price (Binance/CoinGecko) at the specified Date and Time, updates the RTDB, and sends an email notification to the user (falling back to `userBalance.email` if the user is a manual profile without Firebase Auth).
 * **`createManualWithdrawal`** (Authenticated): Allows admins to manually record a withdrawal for a user. Resolves the user email via Firebase Admin Auth (or `userBalance.email`), validates that the user has a sufficient BTC balance, and writes the withdrawal record to the RTDB as `'settled'` with the details. This automatically triggers balance updates and recomputations.
 
-### Bancolombia Deposit Webhook
-* **`bancolombiaWebhook`**: HTTP endpoint secured by `WEBHOOK_SECRET` query parameter. Receives forwarded Bancolombia email alerts, parses them via regex to extract depositor name, amount, date, and time. Normalizes the deposited amount to store it as a clean JavaScript number (e.g. `12000` instead of `"12,000.00"`). Matches deposits to users by comparing the first two words of the parsed name against RTDB `balances` names (case-insensitive). Matched deposits go to `deposits/{uid}` + `deposits/all/{key}`, unmatched go to `unassignedDeposits`. 
+### Bancolombia Deposit Webhook & Deposit Intent Engine
+* **`createDepositIntent`** (Authenticated): Registers a user's intent to deposit COP via Bancolombia / Bre-B key `0092325247`. Validates amount ($5.000 to $50.000.000 COP), records sender account holder name, assigns unique `intentId` and friendly reference (`REND-XXXX`), sets a 4-hour active window, stores in `/depositIntents/{uid}/{intentId}` and `/pendingDepositIntents/{intentId}`, and pushes an in-app notification (`type: 'intent_created'`). Supersedes any previously pending intent for that user.
+* **`cancelDepositIntent`** (Authenticated): Allows users to cancel an unfulfilled pending intent, removing it from `/pendingDepositIntents` and marking it `'cancelled'` in RTDB.
+* **`bancolombiaWebhook`**: HTTP endpoint secured by `WEBHOOK_SECRET`. Receives forwarded Bancolombia email alerts, parses them via regex to extract depositor name, amount, date, and time. Normalizes the deposited amount to a clean number.
+  * **Tier 1 (Intent Match)**: Queries active `/pendingDepositIntents` for matching amount. Checks for sender name token matches against `parsedName`. If matched (or if exactly 1 active intent exists for that amount in the window), links to the intent's `uid`, marks the intent `'settled'`, and deletes from `/pendingDepositIntents`.
+  * **Tier 2 (Balance Name Fallback)**: If no intent matched, matches the first two words of `parsedName` against RTDB `/balances` names. If multiple candidates share the exact same tokens, routes to unassigned.
+  * **Tier 3 (Unassigned)**: Unmatched deposits route to `/unassignedDeposits` for manual admin assignment.
   * **Failover Price Feed**: Uses a centralized `getPrices()` helper which queries CoinGecko for live prices (`BTC/USDT`, `USDT/COP`) and automatically falls back to Coinbase API if CoinGecko returns an error or is unreachable. Saves `priceSource` inside the deposit object's `marketBuy` receipt for complete auditability.
-  * **Small Deposits**: For matched deposits, evaluates the COP amount against a 10 USDT equivalent threshold. If the amount is below 10 USDT, the deposit status is immediately finalized as `'settled'` directly in RTDB (with 0 BTC bought) to prevent small transactions from lingering indefinitely.
-  * **Automated Crypto Purchases**: For deposits >= 10 USDT, evaluates the COP amount and verifies Binance USDT liquidity via the Proxy VM. If sufficient, a `MARKET BUY` for `BTCUSDT` is executed. The deposit status is set to `'settled'` in `deposits/{uid}/{depositId}`, which triggers `onDepositSettled` to atomically credit the bought BTC to `balances/{uid}/BTCbalance`. Both the user and admin receive email confirmations. If insufficient liquidity or both pricing sources fail, the admin receives an urgent warning.
+  * **Small Deposits (< 10 USDT)**: Finalized directly as `'settled'` in RTDB without buying crypto, and dispatches in-app notification to `/notifications/{uid}` (`type: 'cop_deposit_small'`).
+  * **Automated Crypto Purchases (>= 10 USDT)**: Executes a `MARKET BUY` for `BTCUSDT` via Binance Proxy VM. Sets status to `'settled'` in `deposits/{uid}/{depositId}` (triggering `onDepositSettled` to atomically increment `balances/{uid}/BTCbalance`), dispatches in-app notification (`type: 'cop_deposit'`), and sends confirmation emails to user and admin.
 
 ## 🗄️ Realtime Database Schema
 ```
@@ -119,10 +128,31 @@ rendimientos-5dbb9-default-rtdb/
 ├── userSavings/
 │   └── {uid}/
 │       └── {txHash}/           # Write-once savings records (validated: userId === $uid)
-└── btcAddresses/
-    └── {address}/              # Global index of on-chain deposit addresses to owner UIDs
-        ├── uid                 # Owner user UID
-        └── generatedAt         # Timestamp
+├── btcAddresses/
+│   └── {address}/              # Global index of on-chain deposit addresses to owner UIDs
+│       ├── uid                 # Owner user UID
+│       └── generatedAt         # Timestamp
+├── invoices/
+│   └── {uid}/
+│       └── {paymentHash}/      # Hex payment hash (server-side Lightning invoices)
+│           ├── paymentHash, uid, bolt11, amountSats, amountCop
+│           ├── btcUsdtPrice, usdtCopPrice, memo, status ('pending' | 'settled' | 'expired')
+│           └── createdAt, expiresAt, settledAt, amtPaidSat, btcBought
+├── pendingInvoices/
+│   └── {paymentHash}/          # Fast index for syncLightningInvoices scheduler
+│       ├── paymentHash, uid, amountSats, amountCop, createdAt, expiresAt
+├── depositIntents/
+│   └── {uid}/
+│       └── {intentId}/         # User COP deposit intents (Bancolombia / Bre-B)
+│           ├── id, uid, amount, senderName, reference, status ('pending' | 'settled' | 'cancelled')
+│           ├── breBKey, createdAt, expiresAt, settledAt, depositId
+├── pendingDepositIntents/
+│   └── {intentId}/             # Global index for fast lookup by bancolombiaWebhook
+│       ├── intentId, uid, amount, senderName, reference, createdAt, expiresAt
+└── notifications/
+    └── {uid}/
+        └── {notifId}/          # User in-app notifications
+            └── id, type, title, message, amountSats, amountCop, timestamp, read
 ```
 
 > **Note:** `cryptoBalances/` node has been completely deprecated and removed from the database rules, backend Cloud Functions, manual scripts, and the frontend SPA UI. All balances are tracked natively in the `balances/` node.
@@ -204,7 +234,7 @@ Security redirects are in place for `.php`, `.git`, and `.env*` paths → `/404`
 - **Deposit UI Overhaul:** "COP Depositos", "BTC Lightning", and "BTC On-Chain" deposits are organized into dedicated, premium UI cards below the BTC Wallet. The BTC Lightning and on-chain flows write directly to the unified `deposits` RTDB node to ensure automated balance computation.
 - **BTC On-Chain Deposit UI Card**: Displays the user's active Bech32 Segwit deposit address (generated on-demand via secure `/api/getNewDepositAddress` backend call if not already present), a QR code, a copy-to-clipboard button, and an explanation of the 1-block confirmation requirement.
 - **BTC On-Chain Withdrawal Flow**: Added as a withdrawal option in the interface. Enforces address validation via `bitcoin-address-validation`. Connects to the Mempool.space precise fee API in the background to present high-granularity sat/vB fees for three priority tiers (High, Medium, Low). Calculates and shows estimated network fees, the 1% platform fee, and total BTC to deduct. Sends the withdrawal through a secure backend Cloud Function.
-- **BTC Lightning Withdrawal Flow**: Features full QR scanning (`html5-qrcode`) and paste/decode (`bolt11` invoice decoding) capabilities. It dynamically computes base and partner fees, performs client-side balance checks against `syncBtcBalance` to block excessive withdrawals, sends payments via LND router endpoint `/api/lndProxy/v2/router/send` (with dynamic `fee_limit_sat` allowance up to 2% and `timeout_seconds: 60`), handles NDJSON multiline responses in `lndProxy`, maps failure reason codes (such as `FAILURE_REASON_NO_ROUTE`) into friendly Spanish error messages, and registers the successful result directly as `'settled'` in RTDB `/withdrawals`. The submission payload calculates the precise COP equivalent of the satoshis using the live price feeds and stores it under the `amount` key for consistent bookkeeping.
+- **BTC Lightning Withdrawal Flow**: Features full QR scanning (`html5-qrcode`) and paste/decode (`bolt11` invoice decoding) capabilities. Upon user confirmation, routes requests to the authenticated backend Cloud Function `processLightningWithdrawal`. The backend decodes and validates the invoice against LND, executes an atomic balance reservation on `balances/{uid}/BTCbalance` via database transaction, and routes payment via LND router with dynamic fee allowance (up to 2%) and 60-second timeouts. If routing fails, the reserved balance is immediately rolled back and friendly Spanish error explanations are returned. Upon success, the backend atomically records the settled withdrawal in RTDB `/withdrawals/{uid}/{requestId}`, adjusts weighted average buy price calculations, dispatches in-app alerts to `/notifications/{uid}`, and sends confirmation emails. Direct client database writes to `/withdrawals` are completely eliminated.
 - **COP Bank Withdrawal Flow**: Allows bank withdrawal submissions in COP with live conversion to BTC, applying a 1% platform fee, and writing request records to `withdrawals/{uid}` for admin approval and manual processing.
 - **Yield & Performance Metrics**: Yield percentage (Rendimiento) is computed dynamically from consolidated live market prices vs the user's weighted average purchase price and displayed directly in the BTC Wallet card alongside current buy values in COP.
 - **Calculations Decoupling**: Offloads all balance deduction updates exclusively to atomic backend database transaction triggers, eliminating redundant manual calculations and client-side race conditions.
