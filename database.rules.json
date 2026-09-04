@@ -41,6 +41,38 @@
     "btcAddresses": {
       ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
       ".write": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')"
+    },
+    "invoices": {
+      ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
+      ".write": false,
+      "$uid": {
+        ".read": "auth != null && $uid === auth.uid",
+        ".write": false
+      }
+    },
+    "pendingInvoices": {
+      ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
+      ".write": false
+    },
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
+        "$notifId": {
+          ".write": "auth != null && $uid === auth.uid && newData.child('read').val() === true"
+        }
+      }
+    },
+    "depositIntents": {
+      ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
+      ".write": false,
+      "$uid": {
+        ".read": "auth != null && $uid === auth.uid",
+        ".write": false
+      }
+    },
+    "pendingDepositIntents": {
+      ".read": "auth != null && (auth.uid === '5XgksHrgmyeGqqKFYGVjQVM0KGl1' || auth.uid === 'VldgsZCsJaOTrFT2uR2YvXxUe7o1')",
+      ".write": false
     }
   }
 }
