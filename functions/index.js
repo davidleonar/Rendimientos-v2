@@ -3,6 +3,8 @@ const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getDatabase } = require('firebase-admin/database');
 const allowedOrigins = [
+  'https://rendimientos.net',
+  'https://www.rendimientos.net',
   'https://rendimientos-5dbb9.web.app',
   'https://rendimientos-5dbb9.firebaseapp.com',
   'http://localhost:3000',
@@ -1261,9 +1263,21 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
 
       // F. Send notification email if possible
       let emailSent = false;
+      let targetEmail = '';
       try {
         const userRecord = await admin.auth().getUser(uid);
         if (userRecord && userRecord.email) {
+          targetEmail = userRecord.email;
+        }
+      } catch (authErr) {
+        // Fallback for manual users without Google UID
+      }
+      if (!targetEmail && userBalance.email) {
+        targetEmail = userBalance.email;
+      }
+
+      if (targetEmail) {
+        try {
           const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
@@ -1275,7 +1289,7 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
           const formattedCop = numericAmount.toLocaleString('de-DE');
           const mailOptions = {
             from: smtpUser.value(),
-            to: userRecord.email,
+            to: targetEmail,
             subject: `Depósito Exitoso - Saldo BTC Actualizado`,
             html: `
                   <div style="text-align: center; margin-bottom: 20px;">
@@ -1292,9 +1306,9 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
           emailSent = true;
           await rtdb.ref(`deposits/${uid}/${depositId}`).update({ userNotified: true });
           await rtdb.ref(`deposits/all/${depositId}`).update({ userNotified: true });
+        } catch (err) {
+          console.warn('Skipping email notification:', err.message);
         }
-      } catch (err) {
-        console.warn('Skipping email notification:', err.message);
       }
 
       res.status(200).json({
@@ -1312,6 +1326,81 @@ exports.createManualDeposit = onRequest({ secrets: [smtpPass, binanceProxyToken]
     } catch (err) {
       console.error('Manual deposit function error:', err.message || err);
       res.status(500).send('Internal Server Error');
+    }
+  });
+});
+
+exports.createManualProfile = onRequest((req, res) => {
+  cors(req, res, async () => {
+    // 1. Verify token
+    if (!(await verifyToken(req, res))) return;
+
+    // 2. Check if user is admin
+    const ADMIN_UIDS = [adminUid.value(), 'VldgsZCsJaOTrFT2uR2YvXxUe7o1'];
+    if (!ADMIN_UIDS.includes(req.user.uid)) {
+      return res.status(403).send('Forbidden: Only admins can create profiles.');
+    }
+
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed. Use POST.');
+    }
+
+    try {
+      const { id, name, email, phone, bankName, bankData, notes } = req.body || {};
+
+      if (!id || typeof id !== 'string' || !id.trim()) {
+        return res.status(400).send('Missing required field: id (National ID / Cédula)');
+      }
+
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).send('Missing required field: name (Full Name)');
+      }
+
+      const nationalId = id.trim();
+      const fullName = name.trim();
+
+      // Check if profile already exists in RTDB balances
+      const existingSnap = await rtdb.ref(`balances/${nationalId}`).once('value');
+      if (existingSnap.exists()) {
+        return res.status(409).send(`A profile with National ID "${nationalId}" already exists.`);
+      }
+
+      const newProfile = {
+        id: nationalId,
+        uid: nationalId, // uniform identity key for non-Google users
+        name: fullName,
+        email: email ? String(email).trim() : '',
+        phone: phone ? String(phone).trim() : '',
+        bankName: bankName ? String(bankName).trim() : '',
+        bankData: bankData ? String(bankData).trim() : '',
+        notes: notes ? String(notes).trim() : '',
+        BTCbalance: 0,
+        avgBuyPrice: 0,
+        avgBuyPriceUsdt: 0,
+        totalCopInvested: 0,
+        totalUsdtInvested: 0,
+        createdAt: Date.now()
+      };
+
+      await rtdb.ref(`balances/${nationalId}`).set(newProfile);
+
+      // Also create entry in users/${nationalId} for directory indexing
+      await rtdb.ref(`users/${nationalId}`).set({
+        name: fullName,
+        id: nationalId,
+        email: newProfile.email,
+        phone: newProfile.phone,
+        createdAt: newProfile.createdAt
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Profile for ${fullName} (${nationalId}) created successfully`,
+        profile: newProfile
+      });
+    } catch (err) {
+      console.error('Error creating manual profile:', err);
+      return res.status(500).send(`Server error creating profile: ${err.message || err}`);
     }
   });
 });
